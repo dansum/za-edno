@@ -1,0 +1,62 @@
+import { useT } from "../i18n/useLanguage";
+
+const KEYS: { keys: string; labelKey: keyof ReturnType<typeof useT> }[] = [
+  { keys: "Enter", labelKey: "keyEnter" },
+  { keys: "Tab / Insert", labelKey: "keyTab" },
+  { keys: "F2", labelKey: "keyF2" },
+  { keys: "Delete", labelKey: "keyDelete" },
+  { keys: "Space", labelKey: "keySpace" },
+  { keys: "↑ ↓ ← →", labelKey: "keyArrows" },
+  { keys: "Ctrl + Z", labelKey: "keyUndo" },
+  { keys: "Ctrl + Shift + Z", labelKey: "keyRedo" },
+  { keys: "Ctrl + F", labelKey: "keySearch" },
+  { keys: "Ctrl + колело / Ctrl + wheel", labelKey: "keyZoom" },
+];
+
+export function HelpPanel({ onClose }: { onClose: () => void }) {
+  const t = useT();
+
+  return (
+    <div className="help-panel" role="dialog" aria-label={t.helpTitle}>
+      <div className="help-header">
+        <h3>{t.helpTitle}</h3>
+        <button onClick={onClose}>{t.helpClose}</button>
+      </div>
+
+      <section>
+        <h4>{t.helpIntroTitle}</h4>
+        <p>{t.helpIntro}</p>
+      </section>
+
+      <section>
+        <h4>{t.helpKeysTitle}</h4>
+        <table className="help-keys">
+          <tbody>
+            {KEYS.map((row) => (
+              <tr key={row.keys}>
+                <th scope="row">
+                  <kbd>{row.keys}</kbd>
+                </th>
+                <td>{t[row.labelKey] as string}</td>
+              </tr>
+            ))}
+            <tr>
+              <th scope="row">🖱️</th>
+              <td>{t.keyDrag}</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h4>{t.helpSharingTitle}</h4>
+        <p>{t.helpSharing}</p>
+      </section>
+
+      <section>
+        <h4>{t.helpDataTitle}</h4>
+        <p>{t.helpData}</p>
+      </section>
+    </div>
+  );
+}

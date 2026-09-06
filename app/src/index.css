@@ -1,0 +1,4 @@
+/* глобален reset - основните стилове са в App.css */
+:root {
+  color-scheme: light;
+}

@@ -1,0 +1,76 @@
+name: Публикуване на GitHub Pages
+
+# Публикува се при всяко вливане в main, а също и ръчно от раздела Actions.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Правата, нужни на действието за публикуване в Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Ако тръгнат две публикувания едновременно, по-новото изчаква, а не се отменя -
+# така не остава недовършено качване.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Инсталиране на зависимостите
+        run: npm ci
+
+      - name: Проверка на типовете и тестове
+        run: |
+          npm run test
+          npx tsc -b
+
+      - name: Изграждане
+        env:
+          # Публичният ключ на Liveblocks. Безопасен е за клиента (така или иначе
+          # влиза в JavaScript-а), но се държи като secret, за да не се налага
+          # смяна в кода при смяна на проекта.
+          VITE_LIVEBLOCKS_PUBLIC_KEY: ${{ secrets.VITE_LIVEBLOCKS_PUBLIC_KEY }}
+          # Подпапката, на която GitHub Pages сервира проекта.
+          BASE_PATH: /${{ github.event.repository.name }}/
+        run: npm run build
+
+      - name: Проверка, че ключът е влязъл в изграденото
+        run: |
+          if grep -rq "pk_" dist/assets/*.js; then
+            echo "Ключът е наличен."
+          else
+            echo "::warning::В изграденото няма ключ на Liveblocks - приложението ще работи само локално, без съвместна работа. Проверете secret VITE_LIVEBLOCKS_PUBLIC_KEY."
+          fi
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: app/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
