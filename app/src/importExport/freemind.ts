@@ -6,6 +6,9 @@ import { generateKeyBetween } from "fractional-indexing";
 import { nanoid } from "nanoid";
 import {
   ROOT_ID,
+  addLink,
+  deleteLink,
+  getAllLinks,
   getChildren,
   getMeta,
   getNodesMap,
@@ -22,6 +25,10 @@ export interface PlainNode {
   collapsed?: boolean;
   side?: Side;
   style?: NodeStyle;
+  /** ID-то на възела във файла (атрибут `ID`) - за възстановяване на връзките (§8.2). */
+  fileId?: string;
+  /** Целите на изходящите стрелки от този възел, по ID-та във файла. */
+  arrowlinks?: string[];
   children: PlainNode[];
 }
 
@@ -35,10 +42,12 @@ function escapeXml(value: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function nodeToXml(doc: Y.Doc, node: NodeSnapshot, depth: number): string {
+function nodeToXml(doc: Y.Doc, node: NodeSnapshot, depth: number, linksByFrom: Map<string, string[]>): string {
   const indent = "  ".repeat(depth);
   const children = getChildren(doc, node.id);
-  const attrs = [`TEXT="${escapeXml(node.text)}"`];
+  // ID-то се записва винаги (не само при изходящи връзки), за да могат и
+  // ЧУЖДИ стрелки, сочещи към тази клетка, да се разпознаят при внос.
+  const attrs = [`ID="${node.id}"`, `TEXT="${escapeXml(node.text)}"`];
   if (node.side === "left" || node.side === "right") attrs.push(`POSITION="${node.side}"`);
   // Признакът се записва винаги при сгънат възел, дори да няма деца в момента:
   // иначе цикълът внос -> износ -> внос губи състоянието, зададено от потребителя.
@@ -53,11 +62,15 @@ function nodeToXml(doc: Y.Doc, node: NodeSnapshot, depth: number): string {
     if (node.style.italic) fontAttrs.push(`ITALIC="true"`);
     inner.push(`${indent}  <font ${fontAttrs.join(" ")}/>`);
   }
+  if (node.style.cloud) inner.push(`${indent}  <cloud COLOR="${node.style.cloud}"/>`);
   for (const iconId of node.style.icons ?? []) {
     const icon = iconById(iconId);
     if (icon) inner.push(`${indent}  <icon BUILTIN="${icon.freemindName}"/>`);
   }
-  for (const child of children) inner.push(nodeToXml(doc, child, depth + 1));
+  for (const targetId of linksByFrom.get(node.id) ?? []) {
+    inner.push(`${indent}  <arrowlink DESTINATION="${targetId}"/>`);
+  }
+  for (const child of children) inner.push(nodeToXml(doc, child, depth + 1, linksByFrom));
 
   if (inner.length === 0) {
     return `${indent}<node ${attrs.join(" ")}/>`;
@@ -71,7 +84,12 @@ export function exportToFreeMind(doc: Y.Doc): string {
   const rootMap = nodes.get(ROOT_ID);
   const root = rootMap ? toSnapshot(doc, ROOT_ID, rootMap) : null;
   if (!root) return `<map version="1.0.1">\n</map>\n`;
-  return `<map version="1.0.1">\n${nodeToXml(doc, root, 1)}\n</map>\n`;
+  const linksByFrom = new Map<string, string[]>();
+  for (const link of getAllLinks(doc)) {
+    if (!linksByFrom.has(link.from)) linksByFrom.set(link.from, []);
+    linksByFrom.get(link.from)!.push(link.to);
+  }
+  return `<map version="1.0.1">\n${nodeToXml(doc, root, 1, linksByFrom)}\n</map>\n`;
 }
 
 /** Дървото като Markdown списък - удобно за поставяне в документ. */
@@ -148,21 +166,29 @@ export function parseFreeMind(xml: string): PlainNode {
     const children = Array.from(el.children).filter((c) => c.tagName.toLowerCase() === "node");
 
     const font = el.querySelector(":scope > font");
+    const cloud = el.querySelector(":scope > cloud");
     const style: NodeStyle = {};
     if (el.getAttribute("COLOR")) style.color = el.getAttribute("COLOR")!;
     if (el.getAttribute("BACKGROUND_COLOR")) style.background = el.getAttribute("BACKGROUND_COLOR")!;
     if (font?.getAttribute("BOLD") === "true") style.bold = true;
     if (font?.getAttribute("ITALIC") === "true") style.italic = true;
+    if (cloud?.getAttribute("COLOR")) style.cloud = cloud.getAttribute("COLOR")!;
     const icons = Array.from(el.querySelectorAll(":scope > icon"))
       .map((iconEl) => iconByFreemindName(iconEl.getAttribute("BUILTIN") ?? "")?.id)
       .filter((id): id is string => Boolean(id));
     if (icons.length) style.icons = icons;
+
+    const arrowlinks = Array.from(el.querySelectorAll(":scope > arrowlink"))
+      .map((a) => a.getAttribute("DESTINATION"))
+      .filter((d): d is string => Boolean(d));
 
     return {
       text,
       collapsed: el.getAttribute("FOLDED") === "true",
       side: position === "left" ? "left" : position === "right" ? "right" : null,
       style,
+      fileId: el.getAttribute("ID") ?? undefined,
+      arrowlinks: arrowlinks.length ? arrowlinks : undefined,
       children: children.map(convert),
     };
   }
@@ -185,6 +211,19 @@ export function replaceDocWithTree(doc: Y.Doc, tree: PlainNode, origin?: unknown
         removeNodeStyle(doc, id); // без това старите стилове остават завинаги в хранилището
       }
     }
+    for (const link of getAllLinks(doc)) deleteLink(doc, link.id); // старите връзки вече сочат към изтрити възли
+
+    // За връзките (§8.2): файлът сочи целите по неговите собствени ID-та, но
+    // тук за всеки възел се ражда нов nanoid - затова първо строим цялото
+    // дърво и помним превода старо ID -> ново ID, а стрелките се създават
+    // едва в края, когато всички цели вече съществуват.
+    const fileIdToNewId = new Map<string, string>();
+    const pendingLinks: { from: string; toFileId: string }[] = [];
+
+    function registerLinks(newId: string, node: PlainNode) {
+      if (node.fileId) fileIdToNewId.set(node.fileId, newId);
+      for (const toFileId of node.arrowlinks ?? []) pendingLinks.push({ from: newId, toFileId });
+    }
 
     const root = nodes.get(ROOT_ID);
     if (root) {
@@ -193,6 +232,7 @@ export function replaceDocWithTree(doc: Y.Doc, tree: PlainNode, origin?: unknown
       if (tree.text) t.insert(0, tree.text);
       root.set("collapsed", false);
       setNodeStyle(doc, ROOT_ID, tree.style, origin);
+      registerLinks(ROOT_ID, tree);
     }
     getMeta(doc).set("title", tree.text || "Внесена карта");
 
@@ -220,6 +260,7 @@ export function replaceDocWithTree(doc: Y.Doc, tree: PlainNode, origin?: unknown
       }
       nodes.set(id, n);
       setNodeStyle(doc, id, child.style, origin);
+      registerLinks(id, child);
 
       let childPrev: string | null = null;
       for (const grand of child.children) {
@@ -231,6 +272,11 @@ export function replaceDocWithTree(doc: Y.Doc, tree: PlainNode, origin?: unknown
     let prev: string | null = null;
     for (const child of tree.children) {
       prev = insert(ROOT_ID, child, prev);
+    }
+
+    for (const { from, toFileId } of pendingLinks) {
+      const to = fileIdToNewId.get(toFileId);
+      if (to) addLink(doc, from, to, origin); // без съвпадение -> висяща стрелка извън внесеното, пропуска се
     }
   }, origin ?? "import");
 }

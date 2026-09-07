@@ -3,9 +3,12 @@ import { describe, expect, it } from "vitest";
 import {
   ROOT_ID,
   addChild,
+  addLink,
   createMindMapDoc,
+  getAllLinks,
   getChildren,
   setBackgroundColor,
+  setCloud,
   setNodeText,
   setTextColor,
   toggleBold,
@@ -135,6 +138,30 @@ describe("износ", () => {
     replaceDocWithTree(doc2, parseFreeMind(firstExport));
     const secondExport = exportToFreeMind(doc2);
 
-    expect(secondExport).toBe(firstExport);
+    // ID-тата се генерират наново при всеки внос (§8.2, за да могат arrowlink
+    // връзките да се пренасочат към новите id-та) - затова не са идентични
+    // между двата износа, само структурата и стилът наоколо тях.
+    const normalize = (xml: string) => xml.replace(/ID="[^"]*"/g, 'ID="_"');
+    expect(normalize(secondExport)).toBe(normalize(firstExport));
+  });
+
+  it("облак и връзки между произволни клетки оцеляват износ -> внос (§8.2)", () => {
+    const doc = createMindMapDoc();
+    const a = addChild(doc, ROOT_ID, "A");
+    const b = addChild(doc, ROOT_ID, "B");
+    setCloud(doc, a, "#3d5a80");
+    addLink(doc, a, b);
+
+    const xml = exportToFreeMind(doc);
+    expect(xml).toContain('<cloud COLOR="#3d5a80"/>');
+    expect(xml).toMatch(/<arrowlink DESTINATION="[^"]+"\/>/);
+
+    const doc2 = createMindMapDoc();
+    replaceDocWithTree(doc2, parseFreeMind(xml));
+    const childrenAfter = getChildren(doc2, ROOT_ID);
+    const aAfter = childrenAfter.find((c) => c.text === "A")!;
+    const bAfter = childrenAfter.find((c) => c.text === "B")!;
+    expect(aAfter.style.cloud).toBe("#3d5a80");
+    expect(getAllLinks(doc2)).toEqual([{ id: expect.any(String), from: aAfter.id, to: bAfter.id }]);
   });
 });

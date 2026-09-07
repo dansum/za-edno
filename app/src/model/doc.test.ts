@@ -9,8 +9,12 @@ import {
   RED_TEXT_COLOR,
   ROOT_ID,
   addChild,
+  addLink,
   createMindMapDoc,
+  deleteLink,
+  deleteNodeSubtree,
   ensureStyleMigrated,
+  getAllLinks,
   getChildren,
   getNodesMap,
   getStylesArray,
@@ -18,6 +22,7 @@ import {
   moveNode,
   reattachOrphans,
   setBackgroundColor,
+  setCloud,
   setTextColor,
   toggleBold,
   toggleIcon,
@@ -202,5 +207,44 @@ describe("стил на клетката (Фаза 7)", () => {
     // никога не расте отвъд броя клетки С НЕПРАЗЕН стил, независимо от броя
     // промени (за разлика от обикновен Y.Map, който пази история завинаги).
     expect(getStylesArray(doc).length).toBeLessThanOrEqual(1);
+  });
+
+  it("облак: цвят се задава и маха (§8.2)", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Клъстер");
+    setCloud(doc, id, "#3d5a80");
+    expect(getChildren(doc, ROOT_ID)[0].style.cloud).toBe("#3d5a80");
+    setCloud(doc, id, null);
+    expect(getChildren(doc, ROOT_ID)[0].style.cloud).toBeUndefined();
+  });
+});
+
+describe("връзки между произволни клетки (§8.2)", () => {
+  it("създава и трие връзка", () => {
+    const doc = createMindMapDoc();
+    const a = addChild(doc, ROOT_ID, "A");
+    const b = addChild(doc, ROOT_ID, "B");
+    const linkId = addLink(doc, a, b);
+    expect(linkId).not.toBeNull();
+    expect(getAllLinks(doc)).toEqual([{ id: linkId, from: a, to: b }]);
+
+    deleteLink(doc, linkId!);
+    expect(getAllLinks(doc)).toEqual([]);
+  });
+
+  it("отказва връзка на клетка към самата себе си", () => {
+    const doc = createMindMapDoc();
+    const a = addChild(doc, ROOT_ID, "A");
+    expect(addLink(doc, a, a)).toBeNull();
+    expect(getAllLinks(doc)).toEqual([]);
+  });
+
+  it("изтриването на клетка чисти и връзките ѝ (иначе биха останали висящи завинаги)", () => {
+    const doc = createMindMapDoc();
+    const a = addChild(doc, ROOT_ID, "A");
+    const b = addChild(doc, ROOT_ID, "B");
+    addLink(doc, a, b);
+    deleteNodeSubtree(doc, b);
+    expect(getAllLinks(doc)).toEqual([]);
   });
 });

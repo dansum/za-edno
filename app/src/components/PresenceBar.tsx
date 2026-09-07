@@ -89,15 +89,32 @@ export function PresenceBar({
   status,
   authorName,
   onRename,
+  lastSyncedAt,
 }: {
   users: PresenceUser[];
   status: string;
   authorName: string;
   onRename: (name: string) => void;
+  lastSyncedAt: number | null;
 }) {
   const t = useT();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(authorName);
+
+  // Ясен офлайн индикатор (§8.4): само "статус" не казва КОЛКО остаряло е
+  // състоянието - тиктака собствен часовник, за да се обновява надписа с
+  // минутите и без нова мрежова активност.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  const syncLabel =
+    lastSyncedAt === null
+      ? t.statusSyncNever
+      : now - lastSyncedAt < 60_000
+        ? t.statusSyncJustNow
+        : t.statusSyncMinutesAgo(Math.floor((now - lastSyncedAt) / 60_000));
 
   function commit() {
     setEditing(false);
@@ -108,6 +125,12 @@ export function PresenceBar({
   return (
     <div className="presence-bar">
       <span className={`status-dot status-${status}`} title={statusLabel(status, t)} role="status" aria-label={statusLabel(status, t)} />
+      <span
+        className={`sync-label${status !== "connected" ? " sync-stale" : ""}`}
+        title={`${statusLabel(status, t)} · ${syncLabel}`}
+      >
+        {syncLabel}
+      </span>
       <div className="presence-users" aria-label={t.a11yParticipants}>
         {users.map((u) => (
           <span

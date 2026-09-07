@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
-import { getStylesArray } from "../model/doc";
+import { getLinksMap, getStylesArray } from "../model/doc";
 
 /**
  * Y.UndoManager, филтриран по origin, за да отменя само собствените
@@ -14,7 +14,7 @@ export function useUndoManager(doc: Y.Doc, localOrigin: symbol): Y.UndoManager {
     // Стилът (bold/italic/цветове/икони) вече живее в отделен Y.Array
     // (getStylesArray), не вложен в "nodes" - трябва изрично да е в обхвата,
     // иначе undo/redo спира да го хваща.
-    managerRef.current = new Y.UndoManager([doc.getMap("nodes"), getStylesArray(doc)], {
+    managerRef.current = new Y.UndoManager([doc.getMap("nodes"), getStylesArray(doc), getLinksMap(doc)], {
       trackedOrigins: new Set([localOrigin]),
     });
   }

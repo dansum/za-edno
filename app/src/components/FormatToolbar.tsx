@@ -1,8 +1,20 @@
 import { useState } from "react";
 import * as Y from "yjs";
 import type { NodeSnapshot } from "../model/doc";
-import { setBackgroundColor, setTextColor, toggleBold, toggleIcon, toggleItalic } from "../model/doc";
-import { BACKGROUND_COLOR_PALETTE, TEXT_COLOR_PALETTE, readableTextColorFor } from "../model/color";
+import {
+  setBackgroundColor,
+  setCloud,
+  setTextColor,
+  toggleBold,
+  toggleIcon,
+  toggleItalic,
+} from "../model/doc";
+import {
+  BACKGROUND_COLOR_PALETTE,
+  CLOUD_COLOR_PALETTE,
+  TEXT_COLOR_PALETTE,
+  readableTextColorFor,
+} from "../model/color";
 import { ICON_CATALOG } from "../model/icons";
 import { useT } from "../i18n/useLanguage";
 
@@ -14,6 +26,8 @@ export function FormatToolbar({
   canRedo,
   onUndo,
   onRedo,
+  linkArmed,
+  onArmLink,
 }: {
   doc: Y.Doc;
   node: NodeSnapshot;
@@ -22,11 +36,13 @@ export function FormatToolbar({
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
+  linkArmed: boolean;
+  onArmLink: () => void;
 }) {
   const t = useT();
-  const [openPicker, setOpenPicker] = useState<"text" | "background" | "icons" | null>(null);
+  const [openPicker, setOpenPicker] = useState<"text" | "background" | "cloud" | "icons" | null>(null);
 
-  function togglePicker(which: "text" | "background" | "icons") {
+  function togglePicker(which: "text" | "background" | "cloud" | "icons") {
     setOpenPicker((cur) => (cur === which ? null : which));
   }
 
@@ -106,6 +122,36 @@ export function FormatToolbar({
           />
         )}
       </div>
+
+      <div className="format-picker-wrap">
+        <button
+          title={t.toolbarCloud}
+          onClick={() => togglePicker("cloud")}
+          style={{ color: node.style.cloud }}
+        >
+          ☁
+        </button>
+        {openPicker === "cloud" && (
+          <ColorPicker
+            palette={CLOUD_COLOR_PALETTE}
+            current={node.style.cloud}
+            defaultLabel={t.toolbarDefault}
+            customLabel={t.toolbarCustomColor}
+            onPick={(color) => {
+              setCloud(doc, node.id, color, origin);
+              setOpenPicker(null);
+            }}
+          />
+        )}
+      </div>
+
+      <button
+        className={linkArmed ? "active" : ""}
+        title={t.toolbarLink}
+        onClick={onArmLink}
+      >
+        🔗
+      </button>
 
       <span className="format-toolbar-sep" />
 

@@ -25,6 +25,9 @@ const bg = {
   statusConnected: "Свързан",
   statusConnecting: "Свързване…",
   statusDisconnected: "Извън връзка (работи се локално)",
+  statusSyncNever: "още не е синхронизирано със сървъра",
+  statusSyncJustNow: "синхронизирано току-що",
+  statusSyncMinutesAgo: (n: number) => `последно синхронизирано преди ${n} мин`,
 
   // платно
   loading: "Зареждане…",
@@ -109,6 +112,27 @@ const bg = {
   toolbarDefault: "По подразбиране",
   toolbarIcons: "Икони",
   toolbarCustomColor: "Друг цвят…",
+  toolbarCloud: "Облак около клетката и поддървото ѝ",
+  toolbarLink: "Свържи с друга клетка (стрелка) — после кликни целевата клетка, Esc отменя",
+  linkingHint: "Изберете клетка, с която да се свърже — Esc отменя",
+
+  // износ като изображение
+  exportSvg: "Изнеси като изображение (SVG)",
+  exportPng: "Изнеси като изображение (PNG)",
+
+  // табло (admin.html)
+  adminTitle: "Моите карти",
+  adminNewMap: "Нова карта",
+  adminOpen: "Отвори",
+  adminCopyLink: "Копирай линк",
+  adminRemove: "Премахни от списъка",
+  adminRemoveConfirm: (title: string) =>
+    `Да махна ли „${title}“ от списъка? Самата карта НЕ се трие — само записа в таблото.`,
+  adminEmpty: "Още нямате отворени карти в този браузър.",
+  adminLastOpened: (rel: string) => `последно отворена ${rel}`,
+  adminBackToApp: "← Към приложението",
+  adminNote:
+    "Този списък е личен за браузъра ви - не се синхронизира между устройства и не показва карти, отваряни от други хора.",
 
   // достъпност
   a11yNode: (text: string) => `Възел: ${text}`,
@@ -134,6 +158,9 @@ const en: Dictionary = {
   statusConnected: "Connected",
   statusConnecting: "Connecting…",
   statusDisconnected: "Offline (working locally)",
+  statusSyncNever: "not yet synced with the server",
+  statusSyncJustNow: "synced just now",
+  statusSyncMinutesAgo: (n: number) => `last synced ${n} min ago`,
 
   loading: "Loading…",
   centralTopic: "Central topic",
@@ -210,6 +237,25 @@ const en: Dictionary = {
   toolbarDefault: "Default",
   toolbarIcons: "Icons",
   toolbarCustomColor: "Custom color…",
+  toolbarCloud: "Cloud around the cell and its subtree",
+  toolbarLink: "Link to another cell (arrow) — then click the target cell, Esc cancels",
+  linkingHint: "Pick a cell to link to — Esc cancels",
+
+  exportSvg: "Export as image (SVG)",
+  exportPng: "Export as image (PNG)",
+
+  adminTitle: "My maps",
+  adminNewMap: "New map",
+  adminOpen: "Open",
+  adminCopyLink: "Copy link",
+  adminRemove: "Remove from list",
+  adminRemoveConfirm: (title: string) =>
+    `Remove "${title}" from the list? The map itself is NOT deleted — only this list entry.`,
+  adminEmpty: "No maps opened yet in this browser.",
+  adminLastOpened: (rel: string) => `last opened ${rel}`,
+  adminBackToApp: "← Back to the app",
+  adminNote:
+    "This list is private to your browser — it does not sync across devices and does not show maps opened by other people.",
 
   a11yNode: (text: string) => `Node: ${text}`,
   a11yCanvas: "Mind map",

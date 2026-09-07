@@ -8,6 +8,7 @@ import {
   parseFreeMind,
   replaceDocWithTree,
 } from "../importExport/freemind";
+import { downloadBlob, exportToPngBlob, exportToSvg } from "../importExport/imageExport";
 import { getMeta } from "../model/doc";
 import { useT } from "../i18n/useLanguage";
 
@@ -66,6 +67,22 @@ export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => vo
             }}
           >
             {t.exportOpml}
+          </button>
+          <button
+            onClick={() => {
+              downloadBlob(`${safeFileName(doc)}.svg`, new Blob([exportToSvg(doc)], { type: "image/svg+xml" }));
+              setOpen(false);
+            }}
+          >
+            {t.exportSvg}
+          </button>
+          <button
+            onClick={async () => {
+              downloadBlob(`${safeFileName(doc)}.png`, await exportToPngBlob(doc));
+              setOpen(false);
+            }}
+          >
+            {t.exportPng}
           </button>
           <hr />
           <button onClick={() => fileInputRef.current?.click()}>{t.importFile}</button>

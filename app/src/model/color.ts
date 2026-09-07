@@ -10,6 +10,16 @@ export const BACKGROUND_COLOR_PALETTE = [
   "#f3e8fd",
   "#fff8e1",
 ];
+/** По-наситени тонове за „облака" (§8.2) - рисува се полупрозрачен, бледата
+ * палитра на фона на клетката почти не се вижда зад него. */
+export const CLOUD_COLOR_PALETTE = [
+  "#e07a5f",
+  "#3d5a80",
+  "#81b29a",
+  "#f2cc8f",
+  "#9d4edd",
+  "#2a9d8f",
+];
 
 function hexToRgb(hex: string): [number, number, number] | null {
   const match = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex.trim());

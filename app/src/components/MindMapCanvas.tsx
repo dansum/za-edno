@@ -3,7 +3,9 @@ import * as Y from "yjs";
 import {
   ROOT_ID,
   addChild,
+  addLink,
   addSiblingAfter,
+  deleteLink,
   deleteNodeSubtree,
   moveNode,
   setNodeText,
@@ -13,9 +15,10 @@ import {
   toggleItalic,
   toggleRedText,
 } from "../model/doc";
-import type { NodeSnapshot } from "../model/doc";
+import type { LinkInfo, NodeSnapshot } from "../model/doc";
 import { computeLayout } from "../layout/treeLayout";
 import type { LayoutNode } from "../layout/treeLayout";
+import { computeClouds, computeLinkPaths } from "../layout/overlays";
 import type { PresenceUser } from "./PresenceBar";
 import type { SearchState } from "./SearchBar";
 import { useT } from "../i18n/useLanguage";
@@ -34,6 +37,7 @@ export interface CanvasHandle {
 interface Props {
   doc: Y.Doc;
   nodes: Record<string, NodeSnapshot>;
+  links: LinkInfo[];
   selectedId: string;
   onSelect: (id: string) => void;
   presence: PresenceUser[];
@@ -46,6 +50,7 @@ interface Props {
 export function MindMapCanvas({
   doc,
   nodes,
+  links,
   selectedId,
   onSelect,
   presence,
@@ -61,11 +66,20 @@ export function MindMapCanvas({
   const [zoom, setZoom] = useState(1);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  // Режим "свързване" (§8.2): въоръжен от бутона 🔗 в лентата за форматиране;
+  // следващият кликнат възел довършва стрелката от `linkingFrom` към него.
+  const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
+  const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
 
   const matchSet = useMemo(() => new Set(search.matches), [search.matches]);
 
   const root = nodes[ROOT_ID];
   const layout = useMemo(() => (root ? computeLayout(doc, root) : null), [doc, root, nodes]);
+
+  // „Облак" и връзки/стрелки (§8.2) - геометрията е споделена с износа като
+  // изображение (importExport/imageExport.ts), вж. layout/overlays.ts.
+  const clouds = useMemo(() => (layout ? computeClouds(nodes, layout) : []), [nodes, layout]);
+  const linkPaths = useMemo(() => (layout ? computeLinkPaths(links, layout) : []), [links, layout]);
 
   const selectionByNode = useMemo(() => {
     const map = new Map<string, PresenceUser[]>();
@@ -118,6 +132,17 @@ export function MindMapCanvas({
     const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
     function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && linkingFrom) {
+        e.preventDefault();
+        setLinkingFrom(null);
+        return;
+      }
+      if ((e.key === "Delete" || e.key === "Backspace") && selectedLinkId && !editingId) {
+        e.preventDefault();
+        deleteLink(doc, selectedLinkId, LOCAL_ORIGIN);
+        setSelectedLinkId(null);
+        return;
+      }
       if (!selectedId) return;
 
       // Форматиращите комбинации (§7.1, §7.3-7.5) работят и по време на
@@ -254,7 +279,7 @@ export function MindMapCanvas({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [doc, selectedId, editingId, layout, nodes, onSelect, undoManager, onRequestSearch]);
+  }, [doc, selectedId, editingId, layout, nodes, onSelect, undoManager, onRequestSearch, linkingFrom, selectedLinkId]);
 
   // ---- панорама и мащаб на платното ----
   function onWheel(e: React.WheelEvent) {
@@ -351,6 +376,18 @@ export function MindMapCanvas({
     setDropTarget(null);
   }
 
+  // Клик върху възел: обикновено избира, но докато сме "въоръжени" за връзка
+  // (§8.2) вместо това довършва стрелката към кликнатия възел.
+  function onNodeClick(id: string) {
+    if (linkingFrom) {
+      if (linkingFrom !== id) addLink(doc, linkingFrom, id, LOCAL_ORIGIN);
+      setLinkingFrom(null);
+      return;
+    }
+    setSelectedLinkId(null);
+    onSelect(id);
+  }
+
   const { canUndo, canRedo } = useUndoRedoState(undoManager);
   const selectedNode = nodes[selectedId];
 
@@ -367,13 +404,19 @@ export function MindMapCanvas({
           canRedo={canRedo}
           onUndo={() => undoManager.undo()}
           onRedo={() => undoManager.redo()}
+          linkArmed={linkingFrom === selectedNode.id}
+          onArmLink={() => setLinkingFrom((cur) => (cur === selectedNode.id ? null : selectedNode.id))}
         />
       )}
+      {linkingFrom && <div className="mindmap-linking-hint">{t.linkingHint}</div>}
       <div
         ref={containerRef}
-        className="mindmap-viewport"
+        className={`mindmap-viewport${linkingFrom ? " linking" : ""}`}
         onWheel={onWheel}
-        onPointerDown={onBackgroundPointerDown}
+        onPointerDown={(e) => {
+          setSelectedLinkId(null);
+          onBackgroundPointerDown(e);
+        }}
         onPointerMove={onBackgroundPointerMove}
         onPointerUp={onBackgroundPointerUp}
         onPointerCancel={onBackgroundPointerUp}
@@ -384,6 +427,21 @@ export function MindMapCanvas({
         className="mindmap-canvas"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
       >
+        {clouds.map((c) => (
+          <div
+            key={c.id}
+            className="mindmap-cloud"
+            style={{
+              left: c.x,
+              top: c.y,
+              width: c.width,
+              height: c.height,
+              background: c.color,
+              borderColor: c.color,
+            }}
+          />
+        ))}
+
         <svg className="mindmap-edges" width={layout.width} height={layout.height}>
           {layout.edges.map((edge) => {
             const from = layout.nodes.find((n) => n.id === edge.from);
@@ -404,6 +462,26 @@ export function MindMapCanvas({
           })}
         </svg>
 
+        <svg className="mindmap-links" width={layout.width} height={layout.height}>
+          <defs>
+            <marker id="mindmap-link-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" />
+            </marker>
+          </defs>
+          {linkPaths.map((l) => (
+            <path
+              key={l.id}
+              d={l.d}
+              className={`mindmap-link${l.id === selectedLinkId ? " selected" : ""}`}
+              markerEnd="url(#mindmap-link-arrow)"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedLinkId(l.id);
+              }}
+            />
+          ))}
+        </svg>
+
         {layout.nodes.map((n) => (
           <NodeBox
             key={n.id}
@@ -417,7 +495,7 @@ export function MindMapCanvas({
             isActiveMatch={search.activeMatch === n.id}
             dimmed={search.dimOthers && search.matches.length > 0 && !matchSet.has(n.id)}
             presenceUsers={selectionByNode.get(n.id) ?? []}
-            onSelect={() => onSelect(n.id)}
+            onSelect={() => onNodeClick(n.id)}
             onStartEdit={() => setEditingId(n.id)}
             onCommitText={(text) => {
               setNodeText(doc, n.id, text, LOCAL_ORIGIN);

@@ -34,7 +34,7 @@ export default function App() {
 function AppShell() {
   const { t, language, setLanguage } = useLanguage();
   const roomId = useMemo(getRoomIdFromUrl, []);
-  const { doc, provider, status, nodes, authorName, setAuthorName } = useYDoc(roomId);
+  const { doc, provider, status, nodes, links, authorName, setAuthorName, lastSyncedAt } = useYDoc(roomId);
   const [selectedId, setSelectedId] = useState(ROOT_ID);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -85,6 +85,9 @@ function AppShell() {
           <button onClick={() => setHistoryOpen(true)}>{t.history}</button>
           <FileMenu doc={doc} onImported={() => setSelectedId(ROOT_ID)} />
           <button onClick={() => setHelpOpen(true)}>{t.help}</button>
+          <a className="admin-link-btn" href="admin.html">
+            {t.adminTitle}
+          </a>
         </div>
 
         <div className="app-header-right">
@@ -105,6 +108,7 @@ function AppShell() {
             status={status}
             authorName={authorName}
             onRename={setAuthorName}
+            lastSyncedAt={lastSyncedAt}
           />
         </div>
       </header>
@@ -123,6 +127,7 @@ function AppShell() {
         <MindMapCanvas
           doc={doc}
           nodes={nodes}
+          links={links}
           selectedId={selectedId}
           onSelect={setSelectedId}
           presence={presence}

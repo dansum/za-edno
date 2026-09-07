@@ -19,8 +19,17 @@ export interface NodeStyle {
   bold?: boolean;
   italic?: boolean;
   link?: string;
+  /** Цвят на „облака" — рамка около клетката и цялото ѝ поддърво (§8.2). */
+  cloud?: string;
   /** Икони по клетката, в реда на добавяне — вж. src/model/icons.ts. */
   icons?: string[];
+}
+
+/** Връзка (стрелка) между произволни две клетки, не само родител-дете (§8.2). */
+export interface LinkInfo {
+  id: string;
+  from: string;
+  to: string;
 }
 
 /** Плоско, само-за-четене представяне на възел — удобно за React рендер. */
@@ -68,6 +77,7 @@ function pruneStyle(style: NodeStyle): NodeStyle {
   if (style.bold) out.bold = true;
   if (style.italic) out.italic = true;
   if (style.link) out.link = style.link;
+  if (style.cloud) out.cloud = style.cloud;
   if (style.icons?.length) out.icons = style.icons;
   return out;
 }
@@ -169,6 +179,7 @@ export function toSnapshot(doc: Y.Doc, id: string, n: Y.Map<unknown>): NodeSnaps
     bold: legacy?.get("bold") as boolean | undefined,
     italic: legacy?.get("italic") as boolean | undefined,
     link: legacy?.get("link") as string | undefined,
+    cloud: legacy?.get("cloud") as string | undefined,
     icons: (legacy?.get("icons") as string[] | undefined) ?? (legacyIcon ? [legacyIcon] : undefined),
   };
   return {
@@ -302,10 +313,14 @@ export function deleteNodeSubtree(doc: Y.Doc, nodeId: string, origin?: unknown):
       if ((n.get("parent") as string | null) === id) stack.push(cid);
     });
   }
+  const deletedSet = new Set(toDelete);
   doc.transact(() => {
     for (const id of toDelete) {
       nodes.delete(id);
       removeNodeStyle(doc, id); // без това стилът на изтрити възли би останал завинаги в хранилището
+    }
+    for (const link of getAllLinks(doc)) {
+      if (deletedSet.has(link.from) || deletedSet.has(link.to)) deleteLink(doc, link.id);
     }
   }, origin);
 }
@@ -344,6 +359,12 @@ export function setBackgroundColor(
 ): void {
   const current = readStyle(doc, nodeId);
   writeStyle(doc, nodeId, { ...current, background: color ?? undefined }, origin);
+}
+
+/** „Облак" около клетката и цялото ѝ поддърво (§8.2); `null`/липса маха облака. */
+export function setCloud(doc: Y.Doc, nodeId: string, color: string | null, origin?: unknown): void {
+  const current = readStyle(doc, nodeId);
+  writeStyle(doc, nodeId, { ...current, cloud: color ?? undefined }, origin);
 }
 
 export const RED_TEXT_COLOR = "#c0392b";
@@ -388,6 +409,7 @@ export function ensureStyleMigrated(doc: Y.Doc, origin?: unknown): boolean {
         bold: legacy.get("bold") as boolean | undefined,
         italic: legacy.get("italic") as boolean | undefined,
         link: legacy.get("link") as string | undefined,
+        cloud: legacy.get("cloud") as string | undefined,
         icons,
       });
       if (Object.keys(style).length && !store.has(id)) store.set(id, style);
@@ -486,4 +508,40 @@ export function reattachOrphans(doc: Y.Doc, origin?: unknown): string[] {
   }
 
   return reattached;
+}
+
+// ---------------------------------------------------------------------------
+// Връзки (стрелки) между произволни клетки, не само родител-дете (§8.2).
+// Създават/трият се рядко (за разлика от стила) - обикновена Y.Map е достатъчна,
+// без риска от трупане на история като при §7.6.
+// ---------------------------------------------------------------------------
+
+export function getLinksMap(doc: Y.Doc): Y.Map<Y.Map<unknown>> {
+  return doc.getMap("links");
+}
+
+export function getAllLinks(doc: Y.Doc): LinkInfo[] {
+  const out: LinkInfo[] = [];
+  getLinksMap(doc).forEach((l, id) => {
+    out.push({ id, from: l.get("from") as string, to: l.get("to") as string });
+  });
+  return out;
+}
+
+/** Създава връзка от `fromId` към `toId`; връща `null` при опит за връзка на клетка към себе си. */
+export function addLink(doc: Y.Doc, fromId: string, toId: string, origin?: unknown): string | null {
+  if (fromId === toId) return null;
+  const links = getLinksMap(doc);
+  const id = nanoid(10);
+  doc.transact(() => {
+    const l = new Y.Map<unknown>();
+    l.set("from", fromId);
+    l.set("to", toId);
+    links.set(id, l);
+  }, origin);
+  return id;
+}
+
+export function deleteLink(doc: Y.Doc, linkId: string, origin?: unknown): void {
+  doc.transact(() => getLinksMap(doc).delete(linkId), origin);
 }

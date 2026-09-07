@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
 import {
+  ROOT_ID,
   createMindMapDoc,
   ensureRootSides,
   ensureStyleMigrated,
+  getAllLinks,
   getAllSnapshots,
+  getLinksMap,
   getStylesArray,
   reattachOrphans,
 } from "../model/doc";
-import type { NodeSnapshot } from "../model/doc";
+import type { LinkInfo, NodeSnapshot } from "../model/doc";
 import { attachLocalPersistence } from "../sync/persistence";
 import { AutoSnapshotter } from "../history/snapshots";
 import {
@@ -18,6 +21,7 @@ import {
   releaseProvider,
 } from "../sync/provider";
 import type { SyncProvider, SyncStatus } from "../sync/provider";
+import { touchMyMap } from "../registry/myMaps";
 
 const LIVEBLOCKS_PUBLIC_KEY = import.meta.env.VITE_LIVEBLOCKS_PUBLIC_KEY as string | undefined;
 
@@ -26,8 +30,11 @@ export interface YDocState {
   provider: SyncProvider | null;
   status: SyncStatus;
   nodes: Record<string, NodeSnapshot>;
+  links: LinkInfo[];
   authorName: string;
   setAuthorName: (name: string) => void;
+  /** Кога за последно е потвърдена връзка със сървъра - `null` преди първата. */
+  lastSyncedAt: number | null;
 }
 
 function loadAuthorName(): string {
@@ -57,25 +64,44 @@ export function useYDoc(roomId: string): YDocState {
   const doc = docRef.current;
 
   const [nodes, setNodes] = useState<Record<string, NodeSnapshot>>(() => getAllSnapshots(doc));
+  const [links, setLinks] = useState<LinkInfo[]>(() => getAllLinks(doc));
   const [status, setStatus] = useState<SyncStatus>("connecting");
   const [provider, setProvider] = useState<SyncProvider | null>(null);
   const [authorName, setAuthorNameState] = useState<string>(loadAuthorName);
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const authorNameRef = useRef(authorName);
   authorNameRef.current = authorName;
+  const lastTitleRef = useRef<string | null>(null);
 
   useEffect(() => {
     const nodesMap = doc.getMap("nodes");
     const stylesArray = getStylesArray(doc);
+    const linksMap = getLinksMap(doc);
     const onUpdate = () => {
       reattachOrphans(doc, "auto-reattach");
       ensureRootSides(doc, "assign-sides");
       ensureStyleMigrated(doc, "migrate-style");
-      setNodes(getAllSnapshots(doc));
+      const snapshots = getAllSnapshots(doc);
+      setNodes(snapshots);
+      setLinks(getAllLinks(doc));
+      // Таблото (admin.html, §8.3) показва централната тема като заглавие -
+      // записваме само когато наистина се е променила, не при всяка редакция.
+      const title = snapshots[ROOT_ID]?.text ?? "";
+      if (title !== lastTitleRef.current) {
+        lastTitleRef.current = title;
+        touchMyMap(roomId, title);
+      }
     };
     nodesMap.observeDeep(onUpdate);
     // Стилът живее в отделен Y.Array (вж. model/doc.ts) - трябва отделно наблюдение,
     // иначе промени само в стила (без промяна на "nodes") не презареждат UI-я.
     stylesArray.observeDeep(onUpdate);
+    // Връзките (стрелките, §8.2) живеят в собствена Y.Map - същата причина.
+    linksMap.observeDeep(onUpdate);
+
+    // Записва картата в таблото (§8.3) веднага при отваряне - не само при
+    // първата промяна, иначе разглеждане без редакция не мести "последно отворена".
+    touchMyMap(roomId, getAllSnapshots(doc)[ROOT_ID]?.text ?? "");
 
     const persistence = attachLocalPersistence(doc, roomId);
     const snapshotter = new AutoSnapshotter(doc, () => authorNameRef.current);
@@ -83,6 +109,7 @@ export function useYDoc(roomId: string): YDocState {
 
     let cancelled = false;
     let acquired = false;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
 
     async function setup() {
       // Връзката е обща за стаята и се брои по ползватели, за да преживее
@@ -109,9 +136,23 @@ export function useYDoc(roomId: string): YDocState {
         releaseProvider(roomId);
         return;
       }
-      p.on("status", (s) => setStatus(s as SyncStatus));
+      // Ясен офлайн индикатор (§8.4): всеки път, когато статусът потвърждава
+      // връзка, отбелязваме момента. Докато е свързан, "опресняваме" го и на
+      // ритъм (heartbeat) - без ново редактиране статусът сам по себе си не би
+      // пратил събитие, а таймерът в UI-я трябва от какво да брои минутите.
+      const onStatus = (s: unknown) => {
+        setStatus(s as SyncStatus);
+        if (s === "connected") {
+          setLastSyncedAt(Date.now());
+          if (!heartbeat) heartbeat = setInterval(() => setLastSyncedAt(Date.now()), 20_000);
+        } else if (heartbeat) {
+          clearInterval(heartbeat);
+          heartbeat = null;
+        }
+      };
+      p.on("status", onStatus);
       setProvider(p);
-      setStatus("connected");
+      onStatus("connected");
       if (import.meta.env.DEV) {
         // помощ при диагностика в конзолата на браузъра
         (window as unknown as Record<string, unknown>).__mindmap = { doc, provider: p };
@@ -123,6 +164,8 @@ export function useYDoc(roomId: string): YDocState {
       cancelled = true;
       nodesMap.unobserveDeep(onUpdate);
       stylesArray.unobserveDeep(onUpdate);
+      linksMap.unobserveDeep(onUpdate);
+      if (heartbeat) clearInterval(heartbeat);
       persistence.destroy();
       snapshotter.stop();
       if (acquired) releaseProvider(roomId);
@@ -139,5 +182,5 @@ export function useYDoc(roomId: string): YDocState {
     }
   };
 
-  return { doc, provider, status, nodes, authorName, setAuthorName };
+  return { doc, provider, status, nodes, links, authorName, setAuthorName, lastSyncedAt };
 }
