@@ -5,6 +5,7 @@ import {
   ensureRootSides,
   ensureStyleMigrated,
   getAllSnapshots,
+  getStylesArray,
   reattachOrphans,
 } from "../model/doc";
 import type { NodeSnapshot } from "../model/doc";
@@ -64,6 +65,7 @@ export function useYDoc(roomId: string): YDocState {
 
   useEffect(() => {
     const nodesMap = doc.getMap("nodes");
+    const stylesArray = getStylesArray(doc);
     const onUpdate = () => {
       reattachOrphans(doc, "auto-reattach");
       ensureRootSides(doc, "assign-sides");
@@ -71,6 +73,9 @@ export function useYDoc(roomId: string): YDocState {
       setNodes(getAllSnapshots(doc));
     };
     nodesMap.observeDeep(onUpdate);
+    // Стилът живее в отделен Y.Array (вж. model/doc.ts) - трябва отделно наблюдение,
+    // иначе промени само в стила (без промяна на "nodes") не презареждат UI-я.
+    stylesArray.observeDeep(onUpdate);
 
     const persistence = attachLocalPersistence(doc, roomId);
     const snapshotter = new AutoSnapshotter(doc, () => authorNameRef.current);
@@ -117,6 +122,7 @@ export function useYDoc(roomId: string): YDocState {
     return () => {
       cancelled = true;
       nodesMap.unobserveDeep(onUpdate);
+      stylesArray.unobserveDeep(onUpdate);
       persistence.destroy();
       snapshotter.stop();
       if (acquired) releaseProvider(roomId);

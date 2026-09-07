@@ -5,6 +5,7 @@
 import * as Y from "yjs";
 import { generateKeyBetween } from "fractional-indexing";
 import { nanoid } from "nanoid";
+import { YKeyValue } from "y-utility/y-keyvalue";
 
 export const ROOT_ID = "root";
 
@@ -34,6 +35,66 @@ export interface NodeSnapshot {
   style: NodeStyle;
 }
 
+/**
+ * Полето `style` на клетката се променя често и многократно за същия ключ
+ * (bold/italic превключвания, undo/redo при тестване) - Y.Map пази история
+ * от всички стойности, писани за даден ключ, и никога не я освобождава, дори
+ * с активиран GC, затова размерът на стаята расте неограничено с броя
+ * промени, не с реалното съдържание (виж инцидента с Liveblocks квотата в
+ * PLAN.md §7.6). YKeyValue съхранява само последната стойност на ключ и я
+ * заменя изцяло при запис, затова стилът тук е ЕДНА цяла стойност на клетка,
+ * не вложена Y.Map структура.
+ */
+const styleStoreCache = new WeakMap<Y.Doc, YKeyValue<NodeStyle>>();
+
+function getStyleStore(doc: Y.Doc): YKeyValue<NodeStyle> {
+  let store = styleStoreCache.get(doc);
+  if (!store) {
+    store = new YKeyValue(doc.getArray<{ key: string; val: NodeStyle }>("styles"));
+    styleStoreCache.set(doc, store);
+  }
+  return store;
+}
+
+/** Суровият Y.Array зад стиловете - за observeDeep/UndoManager scope (вж. useYDoc.ts, useUndo.ts). */
+export function getStylesArray(doc: Y.Doc): Y.Array<unknown> {
+  return doc.getArray("styles");
+}
+
+function pruneStyle(style: NodeStyle): NodeStyle {
+  const out: NodeStyle = {};
+  if (style.color) out.color = style.color;
+  if (style.background) out.background = style.background;
+  if (style.bold) out.bold = true;
+  if (style.italic) out.italic = true;
+  if (style.link) out.link = style.link;
+  if (style.icons?.length) out.icons = style.icons;
+  return out;
+}
+
+function readStyle(doc: Y.Doc, nodeId: string): NodeStyle {
+  return getStyleStore(doc).get(nodeId) ?? {};
+}
+
+function writeStyle(doc: Y.Doc, nodeId: string, style: NodeStyle, origin?: unknown): void {
+  const store = getStyleStore(doc);
+  const pruned = pruneStyle(style);
+  doc.transact(() => {
+    if (Object.keys(pruned).length) store.set(nodeId, pruned);
+    else store.delete(nodeId);
+  }, origin);
+}
+
+/** Записва целия стил на клетка наведнъж - използва се при внос (вж. importExport/freemind.ts). */
+export function setNodeStyle(doc: Y.Doc, nodeId: string, style: NodeStyle | undefined, origin?: unknown): void {
+  writeStyle(doc, nodeId, style ?? {}, origin);
+}
+
+/** Маха записа за клетка от хранилището - при трайно изтриване на възела. */
+export function removeNodeStyle(doc: Y.Doc, nodeId: string): void {
+  getStyleStore(doc).delete(nodeId);
+}
+
 export function createMindMapDoc(): Y.Doc {
   const doc = new Y.Doc();
   const meta = doc.getMap("meta");
@@ -54,7 +115,6 @@ export function createMindMapDoc(): Y.Doc {
       root.set("note", new Y.Text());
       root.set("collapsed", false);
       root.set("side", null);
-      root.set("style", new Y.Map());
       nodes.set(ROOT_ID, root);
     }, "init");
   }
@@ -90,19 +150,27 @@ export function getChildren(doc: Y.Doc, parentId: string): NodeSnapshot[] {
   const out: NodeSnapshot[] = [];
   nodes.forEach((n, id) => {
     if ((n.get("parent") as string | null) === parentId) {
-      out.push(toSnapshot(id, n));
+      out.push(toSnapshot(doc, id, n));
     }
   });
   out.sort((a, b) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0));
   return out;
 }
 
-export function toSnapshot(id: string, n: Y.Map<unknown>): NodeSnapshot {
-  const styleMap = n.get("style") as Y.Map<unknown> | undefined;
-  // "icon" (един низ) е старото поле отпреди списъка с икони - вж. ensureStyleMigrated.
-  // Тук се чете и то, за да не мигне UI-ят за миг преди мигрирането да мине.
-  const legacyIcon = styleMap?.get("icon") as string | undefined;
-  const icons = (styleMap?.get("icons") as string[] | undefined) ?? (legacyIcon ? [legacyIcon] : undefined);
+export function toSnapshot(doc: Y.Doc, id: string, n: Y.Map<unknown>): NodeSnapshot {
+  const stored = getStyleStore(doc).get(id);
+  // Докато ensureStyleMigrated не е минал по този възел, стилът може все още
+  // да е в старото вложено Y.Map поле - четем и него, за да не мигне UI-ят.
+  const legacy = stored ? undefined : (n.get("style") as Y.Map<unknown> | undefined);
+  const legacyIcon = legacy?.get("icon") as string | undefined;
+  const style: NodeStyle = stored ?? {
+    color: legacy?.get("color") as string | undefined,
+    background: legacy?.get("background") as string | undefined,
+    bold: legacy?.get("bold") as boolean | undefined,
+    italic: legacy?.get("italic") as boolean | undefined,
+    link: legacy?.get("link") as string | undefined,
+    icons: (legacy?.get("icons") as string[] | undefined) ?? (legacyIcon ? [legacyIcon] : undefined),
+  };
   return {
     id,
     parent: (n.get("parent") as string | null) ?? null,
@@ -111,14 +179,7 @@ export function toSnapshot(id: string, n: Y.Map<unknown>): NodeSnapshot {
     note: (n.get("note") as Y.Text)?.toString() ?? "",
     collapsed: Boolean(n.get("collapsed")),
     side: (n.get("side") as Side) ?? null,
-    style: {
-      color: styleMap?.get("color") as string | undefined,
-      background: styleMap?.get("background") as string | undefined,
-      bold: styleMap?.get("bold") as boolean | undefined,
-      italic: styleMap?.get("italic") as boolean | undefined,
-      link: styleMap?.get("link") as string | undefined,
-      icons,
-    },
+    style,
   };
 }
 
@@ -126,7 +187,7 @@ export function getAllSnapshots(doc: Y.Doc): Record<string, NodeSnapshot> {
   const nodes = getNodesMap(doc);
   const out: Record<string, NodeSnapshot> = {};
   nodes.forEach((n, id) => {
-    out[id] = toSnapshot(id, n);
+    out[id] = toSnapshot(doc, id, n);
   });
   return out;
 }
@@ -167,7 +228,6 @@ export function addChild(doc: Y.Doc, parentId: string, text = "", origin?: unkno
     n.set("note", new Y.Text());
     n.set("collapsed", false);
     n.set("side", side);
-    n.set("style", new Y.Map());
     nodes.set(id, n);
   }, origin);
 
@@ -202,7 +262,6 @@ export function addSiblingAfter(doc: Y.Doc, afterId: string, text = "", origin?:
     n.set("note", new Y.Text());
     n.set("collapsed", false);
     n.set("side", side);
-    n.set("style", new Y.Map());
     nodes.set(id, n);
   }, origin);
 
@@ -244,7 +303,10 @@ export function deleteNodeSubtree(doc: Y.Doc, nodeId: string, origin?: unknown):
     });
   }
   doc.transact(() => {
-    for (const id of toDelete) nodes.delete(id);
+    for (const id of toDelete) {
+      nodes.delete(id);
+      removeNodeStyle(doc, id); // без това стилът на изтрити възли би останал завинаги в хранилището
+    }
   }, origin);
 }
 
@@ -259,36 +321,19 @@ export function setNodeText(doc: Y.Doc, nodeId: string, text: string, origin?: u
   }, origin);
 }
 
-function getStyleMap(doc: Y.Doc, nodeId: string): Y.Map<unknown> | null {
-  const n = getNodesMap(doc).get(nodeId);
-  if (!n) return null;
-  let style = n.get("style") as Y.Map<unknown> | undefined;
-  if (!style) {
-    style = new Y.Map();
-    n.set("style", style);
-  }
-  return style;
-}
-
 export function toggleBold(doc: Y.Doc, nodeId: string, origin?: unknown): void {
-  const style = getStyleMap(doc, nodeId);
-  if (!style) return;
-  doc.transact(() => style.set("bold", !style.get("bold")), origin);
+  const current = readStyle(doc, nodeId);
+  writeStyle(doc, nodeId, { ...current, bold: !current.bold }, origin);
 }
 
 export function toggleItalic(doc: Y.Doc, nodeId: string, origin?: unknown): void {
-  const style = getStyleMap(doc, nodeId);
-  if (!style) return;
-  doc.transact(() => style.set("italic", !style.get("italic")), origin);
+  const current = readStyle(doc, nodeId);
+  writeStyle(doc, nodeId, { ...current, italic: !current.italic }, origin);
 }
 
 export function setTextColor(doc: Y.Doc, nodeId: string, color: string | null, origin?: unknown): void {
-  const style = getStyleMap(doc, nodeId);
-  if (!style) return;
-  doc.transact(() => {
-    if (color) style.set("color", color);
-    else style.delete("color");
-  }, origin);
+  const current = readStyle(doc, nodeId);
+  writeStyle(doc, nodeId, { ...current, color: color ?? undefined }, origin);
 }
 
 export function setBackgroundColor(
@@ -297,12 +342,8 @@ export function setBackgroundColor(
   color: string | null,
   origin?: unknown,
 ): void {
-  const style = getStyleMap(doc, nodeId);
-  if (!style) return;
-  doc.transact(() => {
-    if (color) style.set("background", color);
-    else style.delete("background");
-  }, origin);
+  const current = readStyle(doc, nodeId);
+  writeStyle(doc, nodeId, { ...current, background: color ?? undefined }, origin);
 }
 
 export const RED_TEXT_COLOR = "#c0392b";
@@ -313,44 +354,45 @@ const RED = RED_TEXT_COLOR;
  * повторно натискане връща цвета по подразбиране.
  */
 export function toggleRedText(doc: Y.Doc, nodeId: string, origin?: unknown): void {
-  const style = getStyleMap(doc, nodeId);
-  if (!style) return;
-  doc.transact(() => {
-    if (style.get("color") === RED) style.delete("color");
-    else style.set("color", RED);
-  }, origin);
+  const current = readStyle(doc, nodeId);
+  writeStyle(doc, nodeId, { ...current, color: current.color === RED ? undefined : RED }, origin);
 }
 
 /** Добавя или маха икона от списъка на клетката (превключвател по вид икона). */
 export function toggleIcon(doc: Y.Doc, nodeId: string, iconId: string, origin?: unknown): void {
-  const style = getStyleMap(doc, nodeId);
-  if (!style) return;
-  doc.transact(() => {
-    const current = (style.get("icons") as string[] | undefined) ?? [];
-    const next = current.includes(iconId)
-      ? current.filter((i) => i !== iconId)
-      : [...current, iconId];
-    style.set("icons", next);
-  }, origin);
+  const current = readStyle(doc, nodeId);
+  const icons = current.icons ?? [];
+  const next = icons.includes(iconId) ? icons.filter((i) => i !== iconId) : [...icons, iconId];
+  writeStyle(doc, nodeId, { ...current, icons: next }, origin);
 }
 
 /**
- * Еднократно мигриране: старото поле `style.icon` (един низ, никога не пуснато
- * в употреба в интерфейса) се превръща в `style.icons` (списък) — вж. PLAN.md §7.5.
+ * Еднократно мигриране на стари карти: премества стила от вложеното Y.Map
+ * поле `node.style` (отпреди YKeyValue хранилището, вж. коментара горе) в
+ * новото хранилище, и по същия повод превръща старото единично поле
+ * `style.icon` в списъка `style.icons` (вж. PLAN.md §7.5). Идемпотентно.
  */
 export function ensureStyleMigrated(doc: Y.Doc, origin?: unknown): boolean {
   const nodes = getNodesMap(doc);
+  const store = getStyleStore(doc);
   let migrated = false;
   doc.transact(() => {
-    nodes.forEach((n) => {
-      const style = n.get("style") as Y.Map<unknown> | undefined;
-      if (!style) return;
-      const legacyIcon = style.get("icon") as string | undefined;
-      if (legacyIcon && !style.get("icons")) {
-        style.set("icons", [legacyIcon]);
-        style.delete("icon");
-        migrated = true;
-      }
+    nodes.forEach((n, id) => {
+      const legacy = n.get("style") as Y.Map<unknown> | undefined;
+      if (!legacy) return;
+      const legacyIcon = legacy.get("icon") as string | undefined;
+      const icons = (legacy.get("icons") as string[] | undefined) ?? (legacyIcon ? [legacyIcon] : undefined);
+      const style = pruneStyle({
+        color: legacy.get("color") as string | undefined,
+        background: legacy.get("background") as string | undefined,
+        bold: legacy.get("bold") as boolean | undefined,
+        italic: legacy.get("italic") as boolean | undefined,
+        link: legacy.get("link") as string | undefined,
+        icons,
+      });
+      if (Object.keys(style).length && !store.has(id)) store.set(id, style);
+      n.delete("style");
+      migrated = true;
     });
   }, origin ?? "migrate-style");
   return migrated;

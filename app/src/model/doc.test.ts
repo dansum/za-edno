@@ -13,6 +13,7 @@ import {
   ensureStyleMigrated,
   getChildren,
   getNodesMap,
+  getStylesArray,
   isAncestor,
   moveNode,
   reattachOrphans,
@@ -134,7 +135,9 @@ describe("стил на клетката (Фаза 7)", () => {
     toggleBold(doc, id);
     expect(getChildren(doc, ROOT_ID)[0].style.bold).toBe(true);
     toggleBold(doc, id);
-    expect(getChildren(doc, ROOT_ID)[0].style.bold).toBe(false);
+    // изключено поле не се пази изрично като false - пропуска се изцяло от
+    // записа, за да остане хранилището минимално (вж. pruneStyle в doc.ts)
+    expect(getChildren(doc, ROOT_ID)[0].style.bold).toBeUndefined();
 
     toggleItalic(doc, id);
     expect(getChildren(doc, ROOT_ID)[0].style.italic).toBe(true);
@@ -172,18 +175,32 @@ describe("стил на клетката (Фаза 7)", () => {
     expect(getChildren(doc, ROOT_ID)[0].style.icons).toEqual(["idea"]);
   });
 
-  it("мигрира старото единично поле style.icon към списъка style.icons", () => {
+  it("мигрира старото вложено Y.Map поле (с единично style.icon) към хранилището", () => {
     const doc = createMindMapDoc();
     const id = addChild(doc, ROOT_ID, "Стара карта");
     const nodes = getNodesMap(doc);
-    // симулираме данни, записани преди списъка с икони
-    (nodes.get(id)!.get("style") as Y.Map<unknown>).set("icon", "idea");
+    // симулираме данни, записани преди YKeyValue хранилището (§7.6) - вложена
+    // Y.Map с още по-старото единично поле "icon" вместо списъка "icons"
+    const legacy = new Y.Map<unknown>();
+    legacy.set("icon", "idea");
+    nodes.get(id)!.set("style", legacy);
 
     const migrated = ensureStyleMigrated(doc);
     expect(migrated).toBe(true);
     expect(getChildren(doc, ROOT_ID)[0].style.icons).toEqual(["idea"]);
+    expect(nodes.get(id)!.get("style")).toBeUndefined();
 
     // второ извикване не прави нищо (идемпотентно)
     expect(ensureStyleMigrated(doc)).toBe(false);
+  });
+
+  it("многократно превключване на стил не трупа история (§7.6 - причината за изчерпаната Liveblocks квота)", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Възел");
+    for (let i = 0; i < 200; i++) toggleBold(doc, id);
+    // YKeyValue пази само последната стойност на ключ - масивът зад стила
+    // никога не расте отвъд броя клетки С НЕПРАЗЕН стил, независимо от броя
+    // промени (за разлика от обикновен Y.Map, който пази история завинаги).
+    expect(getStylesArray(doc).length).toBeLessThanOrEqual(1);
   });
 });

@@ -4,7 +4,15 @@
 import * as Y from "yjs";
 import { generateKeyBetween } from "fractional-indexing";
 import { nanoid } from "nanoid";
-import { ROOT_ID, getChildren, getMeta, getNodesMap, toSnapshot } from "../model/doc";
+import {
+  ROOT_ID,
+  getChildren,
+  getMeta,
+  getNodesMap,
+  removeNodeStyle,
+  setNodeStyle,
+  toSnapshot,
+} from "../model/doc";
 import type { NodeSnapshot, NodeStyle, Side } from "../model/doc";
 import { iconByFreemindName, iconById } from "../model/icons";
 
@@ -61,7 +69,7 @@ function nodeToXml(doc: Y.Doc, node: NodeSnapshot, depth: number): string {
 export function exportToFreeMind(doc: Y.Doc): string {
   const nodes = getNodesMap(doc);
   const rootMap = nodes.get(ROOT_ID);
-  const root = rootMap ? toSnapshot(ROOT_ID, rootMap) : null;
+  const root = rootMap ? toSnapshot(doc, ROOT_ID, rootMap) : null;
   if (!root) return `<map version="1.0.1">\n</map>\n`;
   return `<map version="1.0.1">\n${nodeToXml(doc, root, 1)}\n</map>\n`;
 }
@@ -162,17 +170,6 @@ export function parseFreeMind(xml: string): PlainNode {
   return convert(rootNode);
 }
 
-function styleToYMap(style: NodeStyle | undefined): Y.Map<unknown> {
-  const m = new Y.Map<unknown>();
-  if (!style) return m;
-  if (style.color) m.set("color", style.color);
-  if (style.background) m.set("background", style.background);
-  if (style.bold) m.set("bold", true);
-  if (style.italic) m.set("italic", true);
-  if (style.icons?.length) m.set("icons", style.icons);
-  return m;
-}
-
 /**
  * Записва просто дърво в Yjs документа, като ЗАМЕНЯ текущото съдържание.
  * Използва се при вноса на файл.
@@ -183,7 +180,10 @@ export function replaceDocWithTree(doc: Y.Doc, tree: PlainNode, origin?: unknown
   doc.transact(() => {
     // изчистваме всичко освен корена, който само пренаписваме
     for (const id of Array.from(nodes.keys())) {
-      if (id !== ROOT_ID) nodes.delete(id);
+      if (id !== ROOT_ID) {
+        nodes.delete(id);
+        removeNodeStyle(doc, id); // без това старите стилове остават завинаги в хранилището
+      }
     }
 
     const root = nodes.get(ROOT_ID);
@@ -192,7 +192,7 @@ export function replaceDocWithTree(doc: Y.Doc, tree: PlainNode, origin?: unknown
       t.delete(0, t.length);
       if (tree.text) t.insert(0, tree.text);
       root.set("collapsed", false);
-      root.set("style", styleToYMap(tree.style));
+      setNodeStyle(doc, ROOT_ID, tree.style, origin);
     }
     getMeta(doc).set("title", tree.text || "Внесена карта");
 
@@ -218,8 +218,8 @@ export function replaceDocWithTree(doc: Y.Doc, tree: PlainNode, origin?: unknown
       } else {
         n.set("side", null);
       }
-      n.set("style", styleToYMap(child.style));
       nodes.set(id, n);
+      setNodeStyle(doc, id, child.style, origin);
 
       let childPrev: string | null = null;
       for (const grand of child.children) {
