@@ -11,10 +11,15 @@ export const ROOT_ID = "root";
 export type Side = "left" | "right" | null;
 
 export interface NodeStyle {
+  /** Цвят на текста (CSS низ, напр. "#b3392b"). */
   color?: string;
-  icon?: string;
+  /** Цвят на фона на клетката. */
+  background?: string;
   bold?: boolean;
+  italic?: boolean;
   link?: string;
+  /** Икони по клетката, в реда на добавяне — вж. src/model/icons.ts. */
+  icons?: string[];
 }
 
 /** Плоско, само-за-четене представяне на възел — удобно за React рендер. */
@@ -94,6 +99,10 @@ export function getChildren(doc: Y.Doc, parentId: string): NodeSnapshot[] {
 
 export function toSnapshot(id: string, n: Y.Map<unknown>): NodeSnapshot {
   const styleMap = n.get("style") as Y.Map<unknown> | undefined;
+  // "icon" (един низ) е старото поле отпреди списъка с икони - вж. ensureStyleMigrated.
+  // Тук се чете и то, за да не мигне UI-ят за миг преди мигрирането да мине.
+  const legacyIcon = styleMap?.get("icon") as string | undefined;
+  const icons = (styleMap?.get("icons") as string[] | undefined) ?? (legacyIcon ? [legacyIcon] : undefined);
   return {
     id,
     parent: (n.get("parent") as string | null) ?? null,
@@ -104,9 +113,11 @@ export function toSnapshot(id: string, n: Y.Map<unknown>): NodeSnapshot {
     side: (n.get("side") as Side) ?? null,
     style: {
       color: styleMap?.get("color") as string | undefined,
-      icon: styleMap?.get("icon") as string | undefined,
+      background: styleMap?.get("background") as string | undefined,
       bold: styleMap?.get("bold") as boolean | undefined,
+      italic: styleMap?.get("italic") as boolean | undefined,
       link: styleMap?.get("link") as string | undefined,
+      icons,
     },
   };
 }
@@ -246,6 +257,103 @@ export function setNodeText(doc: Y.Doc, nodeId: string, text: string, origin?: u
     t.delete(0, t.length);
     if (text) t.insert(0, text);
   }, origin);
+}
+
+function getStyleMap(doc: Y.Doc, nodeId: string): Y.Map<unknown> | null {
+  const n = getNodesMap(doc).get(nodeId);
+  if (!n) return null;
+  let style = n.get("style") as Y.Map<unknown> | undefined;
+  if (!style) {
+    style = new Y.Map();
+    n.set("style", style);
+  }
+  return style;
+}
+
+export function toggleBold(doc: Y.Doc, nodeId: string, origin?: unknown): void {
+  const style = getStyleMap(doc, nodeId);
+  if (!style) return;
+  doc.transact(() => style.set("bold", !style.get("bold")), origin);
+}
+
+export function toggleItalic(doc: Y.Doc, nodeId: string, origin?: unknown): void {
+  const style = getStyleMap(doc, nodeId);
+  if (!style) return;
+  doc.transact(() => style.set("italic", !style.get("italic")), origin);
+}
+
+export function setTextColor(doc: Y.Doc, nodeId: string, color: string | null, origin?: unknown): void {
+  const style = getStyleMap(doc, nodeId);
+  if (!style) return;
+  doc.transact(() => {
+    if (color) style.set("color", color);
+    else style.delete("color");
+  }, origin);
+}
+
+export function setBackgroundColor(
+  doc: Y.Doc,
+  nodeId: string,
+  color: string | null,
+  origin?: unknown,
+): void {
+  const style = getStyleMap(doc, nodeId);
+  if (!style) return;
+  doc.transact(() => {
+    if (color) style.set("background", color);
+    else style.delete("background");
+  }, origin);
+}
+
+export const RED_TEXT_COLOR = "#c0392b";
+const RED = RED_TEXT_COLOR;
+
+/**
+ * Кратък клавиш за червен текст (§7.4): превключвател, не еднопосочно действие -
+ * повторно натискане връща цвета по подразбиране.
+ */
+export function toggleRedText(doc: Y.Doc, nodeId: string, origin?: unknown): void {
+  const style = getStyleMap(doc, nodeId);
+  if (!style) return;
+  doc.transact(() => {
+    if (style.get("color") === RED) style.delete("color");
+    else style.set("color", RED);
+  }, origin);
+}
+
+/** Добавя или маха икона от списъка на клетката (превключвател по вид икона). */
+export function toggleIcon(doc: Y.Doc, nodeId: string, iconId: string, origin?: unknown): void {
+  const style = getStyleMap(doc, nodeId);
+  if (!style) return;
+  doc.transact(() => {
+    const current = (style.get("icons") as string[] | undefined) ?? [];
+    const next = current.includes(iconId)
+      ? current.filter((i) => i !== iconId)
+      : [...current, iconId];
+    style.set("icons", next);
+  }, origin);
+}
+
+/**
+ * Еднократно мигриране: старото поле `style.icon` (един низ, никога не пуснато
+ * в употреба в интерфейса) се превръща в `style.icons` (списък) — вж. PLAN.md §7.5.
+ */
+export function ensureStyleMigrated(doc: Y.Doc, origin?: unknown): boolean {
+  const nodes = getNodesMap(doc);
+  let migrated = false;
+  doc.transact(() => {
+    nodes.forEach((n) => {
+      const style = n.get("style") as Y.Map<unknown> | undefined;
+      if (!style) return;
+      const legacyIcon = style.get("icon") as string | undefined;
+      if (legacyIcon && !style.get("icons")) {
+        style.set("icons", [legacyIcon]);
+        style.delete("icon");
+        migrated = true;
+      }
+    });
+  }, origin ?? "migrate-style");
+  return migrated;
 }
 
 export function toggleCollapsed(doc: Y.Doc, nodeId: string, origin?: unknown): void {

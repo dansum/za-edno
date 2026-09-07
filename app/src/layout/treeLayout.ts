@@ -1,6 +1,6 @@
 // Балансирано оформление ляво/дясно от корена — вж. PLAN.md §6.
 import { ROOT_ID, getChildren } from "../model/doc";
-import type { NodeSnapshot } from "../model/doc";
+import type { NodeSnapshot, NodeStyle } from "../model/doc";
 import type * as Y from "yjs";
 
 export interface LayoutNode {
@@ -30,8 +30,17 @@ const CHAR_W = 8;
 const PADDING_X = 20;
 const MIN_W = 60;
 
-function estimateWidth(text: string): number {
-  return Math.max(MIN_W, text.length * CHAR_W + PADDING_X);
+const ICON_W = 20; // приблизителна ширина на едно емоджи-иконка
+
+/**
+ * Приблизителна ширина на клетката. Отчита удебелянето (по-широки букви) и
+ * иконите пред текста (§7.1, §7.5) - иначе клетката излиза по-тясна от
+ * съдържанието си и текстът/иконите изтичат извън рамката.
+ */
+function estimateWidth(text: string, style?: NodeStyle): number {
+  const charW = style?.bold ? CHAR_W + 1.5 : CHAR_W;
+  const iconsW = (style?.icons?.length ?? 0) * ICON_W;
+  return Math.max(MIN_W, text.length * charW + PADDING_X + iconsW);
 }
 
 interface SubtreeResult {
@@ -44,7 +53,7 @@ function layoutSubtree(
   nodeId: string,
   node: NodeSnapshot,
 ): SubtreeResult {
-  const width = estimateWidth(node.text || " ");
+  const width = estimateWidth(node.text || " ", node.style);
   if (node.collapsed) {
     return {
       height: NODE_H,
@@ -129,7 +138,7 @@ export function computeLayout(doc: Y.Doc, root: NodeSnapshot): LayoutResult {
   const leftChildren = allChildren.filter((c) => c.side === "left");
   const rightChildren = allChildren.filter((c) => c.side !== "left");
 
-  const rootWidth = estimateWidth(root.text || " ");
+  const rootWidth = estimateWidth(root.text || " ", root.style);
   const nodes: LayoutNode[] = [];
   const edges: { from: string; to: string }[] = [];
 

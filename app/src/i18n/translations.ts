@@ -36,7 +36,7 @@ const bg = {
 
   // клавиши
   shortcutsHint:
-    "Enter — нов брат · Tab/Insert — ново дете · F2 — редакция · Delete — изтрий · Space — сгъни/разгъни · Ctrl+Z — отмени",
+    "Enter — нов брат · Tab/Insert — ново дете · F2 — редакция · Delete — изтрий · Space — сгъни/разгъни · Ctrl+Z/Ctrl+Y — отмени/повтори · Ctrl+B/Ctrl+I — удебелено/наклонено · Alt+R — червен текст",
 
   // търсене
   searchPlaceholder: "Търсене във възлите…",
@@ -94,6 +94,21 @@ const bg = {
   keySearch: "търсене",
   keyZoom: "мащабиране",
   keyDrag: "влачене на възел с мишката го премества",
+  keyBold: "удебелен текст",
+  keyItalic: "наклонен текст",
+  keyRedText: "червен текст (превключвател)",
+  keyIcon: "добавя/маха иконата",
+
+  // лента за форматиране
+  toolbarBold: "Удебелено (Ctrl+B)",
+  toolbarItalic: "Наклонено (Ctrl+I)",
+  toolbarUndo: "Отмени (Ctrl+Z)",
+  toolbarRedo: "Повтори (Ctrl+Y)",
+  toolbarTextColor: "Цвят на текста",
+  toolbarBackgroundColor: "Цвят на фона",
+  toolbarDefault: "По подразбиране",
+  toolbarIcons: "Икони",
+  toolbarCustomColor: "Друг цвят…",
 
   // достъпност
   a11yNode: (text: string) => `Възел: ${text}`,
@@ -128,7 +143,7 @@ const en: Dictionary = {
   newMapTitle: "New map",
 
   shortcutsHint:
-    "Enter — new sibling · Tab/Insert — new child · F2 — edit · Delete — remove · Space — collapse/expand · Ctrl+Z — undo",
+    "Enter — new sibling · Tab/Insert — new child · F2 — edit · Delete — remove · Space — collapse/expand · Ctrl+Z/Ctrl+Y — undo/redo · Ctrl+B/Ctrl+I — bold/italic · Alt+R — red text",
 
   searchPlaceholder: "Search nodes…",
   searchNoResults: "No matches",
@@ -181,6 +196,20 @@ const en: Dictionary = {
   keySearch: "search",
   keyZoom: "zoom",
   keyDrag: "drag a node with the mouse to move it",
+  keyBold: "bold text",
+  keyItalic: "italic text",
+  keyRedText: "red text (toggle)",
+  keyIcon: "add/remove the icon",
+
+  toolbarBold: "Bold (Ctrl+B)",
+  toolbarItalic: "Italic (Ctrl+I)",
+  toolbarUndo: "Undo (Ctrl+Z)",
+  toolbarRedo: "Redo (Ctrl+Y)",
+  toolbarTextColor: "Text color",
+  toolbarBackgroundColor: "Background color",
+  toolbarDefault: "Default",
+  toolbarIcons: "Icons",
+  toolbarCustomColor: "Custom color…",
 
   a11yNode: (text: string) => `Node: ${text}`,
   a11yCanvas: "Mind map",

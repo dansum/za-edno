@@ -42,6 +42,10 @@ function AppShell() {
   const [search, setSearch] = useState<SearchState>(EMPTY_SEARCH);
   const [linkCopied, setLinkCopied] = useState(false);
   const undoManager = useUndoManager(doc, LOCAL_ORIGIN);
+  if (import.meta.env.DEV) {
+    // помощ при диагностика в конзолата на браузъра (вж. hooks/useYDoc.ts за __mindmap)
+    (window as unknown as Record<string, unknown>).__undoManager = undoManager;
+  }
   const presence = usePresence(provider?.awareness, authorName, selectedId);
   const canvasRef = useRef<CanvasHandle | null>(null);
 

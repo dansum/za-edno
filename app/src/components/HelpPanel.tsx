@@ -1,4 +1,5 @@
 import { useT } from "../i18n/useLanguage";
+import { ICON_CATALOG } from "../model/icons";
 
 const KEYS: { keys: string; labelKey: keyof ReturnType<typeof useT> }[] = [
   { keys: "Enter", labelKey: "keyEnter" },
@@ -8,9 +9,12 @@ const KEYS: { keys: string; labelKey: keyof ReturnType<typeof useT> }[] = [
   { keys: "Space", labelKey: "keySpace" },
   { keys: "↑ ↓ ← →", labelKey: "keyArrows" },
   { keys: "Ctrl + Z", labelKey: "keyUndo" },
-  { keys: "Ctrl + Shift + Z", labelKey: "keyRedo" },
+  { keys: "Ctrl + Y / Ctrl + Shift + Z", labelKey: "keyRedo" },
   { keys: "Ctrl + F", labelKey: "keySearch" },
   { keys: "Ctrl + колело / Ctrl + wheel", labelKey: "keyZoom" },
+  { keys: "Ctrl + B", labelKey: "keyBold" },
+  { keys: "Ctrl + I", labelKey: "keyItalic" },
+  { keys: "Alt + R (Ctrl+Shift+R на Mac)", labelKey: "keyRedText" },
 ];
 
 export function HelpPanel({ onClose }: { onClose: () => void }) {
@@ -44,6 +48,24 @@ export function HelpPanel({ onClose }: { onClose: () => void }) {
               <th scope="row">🖱️</th>
               <td>{t.keyDrag}</td>
             </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <h4>{t.toolbarIcons}</h4>
+        <table className="help-keys">
+          <tbody>
+            {ICON_CATALOG.map((icon) => (
+              <tr key={icon.id}>
+                <th scope="row">
+                  <kbd>{icon.shortcut}</kbd>
+                </th>
+                <td>
+                  {icon.emoji} {t.keyIcon}
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       </section>

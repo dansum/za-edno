@@ -1,6 +1,17 @@
 // Тестове за внос/износ на FreeMind — вж. PLAN.md Фаза 4.
 import { describe, expect, it } from "vitest";
-import { addChild, createMindMapDoc, getChildren, ROOT_ID, setNodeText } from "../model/doc";
+import {
+  ROOT_ID,
+  addChild,
+  createMindMapDoc,
+  getChildren,
+  setBackgroundColor,
+  setNodeText,
+  setTextColor,
+  toggleBold,
+  toggleIcon,
+  toggleItalic,
+} from "../model/doc";
 import {
   exportToFreeMind,
   exportToMarkdown,
@@ -83,5 +94,47 @@ describe("износ", () => {
     expect(md).toContain("# Проект");
     expect(md).toContain("- Задачи");
     expect(md).toContain("  - Първа");
+  });
+
+  it("пренася удебелен/наклонен текст, цветове и икони (Фаза 7)", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Важна задача");
+    toggleBold(doc, id);
+    toggleItalic(doc, id);
+    setTextColor(doc, id, "#c0392b");
+    setBackgroundColor(doc, id, "#fff8e1");
+    toggleIcon(doc, id, "num-1");
+    toggleIcon(doc, id, "idea");
+
+    const xml = exportToFreeMind(doc);
+    expect(xml).toContain('COLOR="#c0392b"');
+    expect(xml).toContain('BACKGROUND_COLOR="#fff8e1"');
+    expect(xml).toContain('BOLD="true"');
+    expect(xml).toContain('ITALIC="true"');
+    expect(xml).toContain('BUILTIN="full-1"');
+    expect(xml).toContain('BUILTIN="idea"');
+
+    const reimported = parseFreeMind(xml);
+    const node = reimported.children[0];
+    expect(node.style?.bold).toBe(true);
+    expect(node.style?.italic).toBe(true);
+    expect(node.style?.color).toBe("#c0392b");
+    expect(node.style?.background).toBe("#fff8e1");
+    expect(node.style?.icons).toEqual(["num-1", "idea"]);
+  });
+
+  it("обратим цикъл: стилът оцелява внос -> износ -> внос -> износ", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Възел");
+    toggleBold(doc, id);
+    setTextColor(doc, id, "#1c4f8b");
+    toggleIcon(doc, id, "star");
+
+    const firstExport = exportToFreeMind(doc);
+    const doc2 = createMindMapDoc();
+    replaceDocWithTree(doc2, parseFreeMind(firstExport));
+    const secondExport = exportToFreeMind(doc2);
+
+    expect(secondExport).toBe(firstExport);
   });
 });

@@ -6,13 +6,22 @@
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 import {
+  RED_TEXT_COLOR,
   ROOT_ID,
   addChild,
   createMindMapDoc,
+  ensureStyleMigrated,
   getChildren,
+  getNodesMap,
   isAncestor,
   moveNode,
   reattachOrphans,
+  setBackgroundColor,
+  setTextColor,
+  toggleBold,
+  toggleIcon,
+  toggleItalic,
+  toggleRedText,
 } from "./doc";
 
 describe("модел на данните", () => {
@@ -115,5 +124,66 @@ describe("модел на данните", () => {
       }
       expect(reachesRoot).toBe(true);
     }
+  });
+});
+
+describe("стил на клетката (Фаза 7)", () => {
+  it("Ctrl+B и Ctrl+I превключват удебелено и наклонено", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Възел");
+    toggleBold(doc, id);
+    expect(getChildren(doc, ROOT_ID)[0].style.bold).toBe(true);
+    toggleBold(doc, id);
+    expect(getChildren(doc, ROOT_ID)[0].style.bold).toBe(false);
+
+    toggleItalic(doc, id);
+    expect(getChildren(doc, ROOT_ID)[0].style.italic).toBe(true);
+  });
+
+  it("цвят на текста и на фона се записват отделно", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Възел");
+    setTextColor(doc, id, "#1c4f8b");
+    setBackgroundColor(doc, id, "#fff8e1");
+    const snap = getChildren(doc, ROOT_ID)[0];
+    expect(snap.style.color).toBe("#1c4f8b");
+    expect(snap.style.background).toBe("#fff8e1");
+
+    setTextColor(doc, id, null);
+    expect(getChildren(doc, ROOT_ID)[0].style.color).toBeUndefined();
+  });
+
+  it("червеният текст (Alt+R) е превключвател, не еднопосочно действие", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Спешно");
+    toggleRedText(doc, id);
+    expect(getChildren(doc, ROOT_ID)[0].style.color).toBe(RED_TEXT_COLOR);
+    toggleRedText(doc, id); // второ натискане връща по подразбиране
+    expect(getChildren(doc, ROOT_ID)[0].style.color).toBeUndefined();
+  });
+
+  it("иконите се добавят и махат по id, редът се пази", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Задача");
+    toggleIcon(doc, id, "num-1");
+    toggleIcon(doc, id, "idea");
+    expect(getChildren(doc, ROOT_ID)[0].style.icons).toEqual(["num-1", "idea"]);
+    toggleIcon(doc, id, "num-1"); // повторно -> маха се
+    expect(getChildren(doc, ROOT_ID)[0].style.icons).toEqual(["idea"]);
+  });
+
+  it("мигрира старото единично поле style.icon към списъка style.icons", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Стара карта");
+    const nodes = getNodesMap(doc);
+    // симулираме данни, записани преди списъка с икони
+    (nodes.get(id)!.get("style") as Y.Map<unknown>).set("icon", "idea");
+
+    const migrated = ensureStyleMigrated(doc);
+    expect(migrated).toBe(true);
+    expect(getChildren(doc, ROOT_ID)[0].style.icons).toEqual(["idea"]);
+
+    // второ извикване не прави нищо (идемпотентно)
+    expect(ensureStyleMigrated(doc)).toBe(false);
   });
 });

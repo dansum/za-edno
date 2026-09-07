@@ -1,6 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import * as Y from "yjs";
-import { createMindMapDoc, ensureRootSides, getAllSnapshots, reattachOrphans } from "../model/doc";
+import {
+  createMindMapDoc,
+  ensureRootSides,
+  ensureStyleMigrated,
+  getAllSnapshots,
+  reattachOrphans,
+} from "../model/doc";
 import type { NodeSnapshot } from "../model/doc";
 import { attachLocalPersistence } from "../sync/persistence";
 import { AutoSnapshotter } from "../history/snapshots";
@@ -61,6 +67,7 @@ export function useYDoc(roomId: string): YDocState {
     const onUpdate = () => {
       reattachOrphans(doc, "auto-reattach");
       ensureRootSides(doc, "assign-sides");
+      ensureStyleMigrated(doc, "migrate-style");
       setNodes(getAllSnapshots(doc));
     };
     nodesMap.observeDeep(onUpdate);

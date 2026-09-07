@@ -4,14 +4,16 @@
 import * as Y from "yjs";
 import { generateKeyBetween } from "fractional-indexing";
 import { nanoid } from "nanoid";
-import { ROOT_ID, getChildren, getMeta, getNodesMap } from "../model/doc";
-import type { NodeSnapshot, Side } from "../model/doc";
+import { ROOT_ID, getChildren, getMeta, getNodesMap, toSnapshot } from "../model/doc";
+import type { NodeSnapshot, NodeStyle, Side } from "../model/doc";
+import { iconByFreemindName, iconById } from "../model/icons";
 
 export interface PlainNode {
   text: string;
   note?: string;
   collapsed?: boolean;
   side?: Side;
+  style?: NodeStyle;
   children: PlainNode[];
 }
 
@@ -33,29 +35,34 @@ function nodeToXml(doc: Y.Doc, node: NodeSnapshot, depth: number): string {
   // Признакът се записва винаги при сгънат възел, дори да няма деца в момента:
   // иначе цикълът внос -> износ -> внос губи състоянието, зададено от потребителя.
   if (node.collapsed) attrs.push(`FOLDED="true"`);
+  if (node.style.color) attrs.push(`COLOR="${node.style.color}"`);
+  if (node.style.background) attrs.push(`BACKGROUND_COLOR="${node.style.background}"`);
 
-  if (children.length === 0) {
+  const inner: string[] = [];
+  if (node.style.bold || node.style.italic) {
+    const fontAttrs = [];
+    if (node.style.bold) fontAttrs.push(`BOLD="true"`);
+    if (node.style.italic) fontAttrs.push(`ITALIC="true"`);
+    inner.push(`${indent}  <font ${fontAttrs.join(" ")}/>`);
+  }
+  for (const iconId of node.style.icons ?? []) {
+    const icon = iconById(iconId);
+    if (icon) inner.push(`${indent}  <icon BUILTIN="${icon.freemindName}"/>`);
+  }
+  for (const child of children) inner.push(nodeToXml(doc, child, depth + 1));
+
+  if (inner.length === 0) {
     return `${indent}<node ${attrs.join(" ")}/>`;
   }
-  const inner = children.map((c) => nodeToXml(doc, c, depth + 1)).join("\n");
-  return `${indent}<node ${attrs.join(" ")}>\n${inner}\n${indent}</node>`;
+  return `${indent}<node ${attrs.join(" ")}>\n${inner.join("\n")}\n${indent}</node>`;
 }
 
 /** Целият документ като FreeMind .mm файл. */
 export function exportToFreeMind(doc: Y.Doc): string {
   const nodes = getNodesMap(doc);
   const rootMap = nodes.get(ROOT_ID);
-  const rootText = (rootMap?.get("text") as Y.Text | undefined)?.toString() ?? "";
-  const root: NodeSnapshot = {
-    id: ROOT_ID,
-    parent: null,
-    order: "a0",
-    text: rootText,
-    note: "",
-    collapsed: false,
-    side: null,
-    style: {},
-  };
+  const root = rootMap ? toSnapshot(ROOT_ID, rootMap) : null;
+  if (!root) return `<map version="1.0.1">\n</map>\n`;
   return `<map version="1.0.1">\n${nodeToXml(doc, root, 1)}\n</map>\n`;
 }
 
@@ -131,15 +138,39 @@ export function parseFreeMind(xml: string): PlainNode {
     const text = el.getAttribute("TEXT") ?? richText?.textContent?.trim() ?? "";
     const position = el.getAttribute("POSITION");
     const children = Array.from(el.children).filter((c) => c.tagName.toLowerCase() === "node");
+
+    const font = el.querySelector(":scope > font");
+    const style: NodeStyle = {};
+    if (el.getAttribute("COLOR")) style.color = el.getAttribute("COLOR")!;
+    if (el.getAttribute("BACKGROUND_COLOR")) style.background = el.getAttribute("BACKGROUND_COLOR")!;
+    if (font?.getAttribute("BOLD") === "true") style.bold = true;
+    if (font?.getAttribute("ITALIC") === "true") style.italic = true;
+    const icons = Array.from(el.querySelectorAll(":scope > icon"))
+      .map((iconEl) => iconByFreemindName(iconEl.getAttribute("BUILTIN") ?? "")?.id)
+      .filter((id): id is string => Boolean(id));
+    if (icons.length) style.icons = icons;
+
     return {
       text,
       collapsed: el.getAttribute("FOLDED") === "true",
       side: position === "left" ? "left" : position === "right" ? "right" : null,
+      style,
       children: children.map(convert),
     };
   }
 
   return convert(rootNode);
+}
+
+function styleToYMap(style: NodeStyle | undefined): Y.Map<unknown> {
+  const m = new Y.Map<unknown>();
+  if (!style) return m;
+  if (style.color) m.set("color", style.color);
+  if (style.background) m.set("background", style.background);
+  if (style.bold) m.set("bold", true);
+  if (style.italic) m.set("italic", true);
+  if (style.icons?.length) m.set("icons", style.icons);
+  return m;
 }
 
 /**
@@ -161,6 +192,7 @@ export function replaceDocWithTree(doc: Y.Doc, tree: PlainNode, origin?: unknown
       t.delete(0, t.length);
       if (tree.text) t.insert(0, tree.text);
       root.set("collapsed", false);
+      root.set("style", styleToYMap(tree.style));
     }
     getMeta(doc).set("title", tree.text || "Внесена карта");
 
@@ -186,7 +218,7 @@ export function replaceDocWithTree(doc: Y.Doc, tree: PlainNode, origin?: unknown
       } else {
         n.set("side", null);
       }
-      n.set("style", new Y.Map());
+      n.set("style", styleToYMap(child.style));
       nodes.set(id, n);
 
       let childPrev: string | null = null;

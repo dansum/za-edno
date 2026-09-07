@@ -7,7 +7,11 @@ import {
   deleteNodeSubtree,
   moveNode,
   setNodeText,
+  toggleBold,
   toggleCollapsed,
+  toggleIcon,
+  toggleItalic,
+  toggleRedText,
 } from "../model/doc";
 import type { NodeSnapshot } from "../model/doc";
 import { computeLayout } from "../layout/treeLayout";
@@ -15,6 +19,10 @@ import type { LayoutNode } from "../layout/treeLayout";
 import type { PresenceUser } from "./PresenceBar";
 import type { SearchState } from "./SearchBar";
 import { useT } from "../i18n/useLanguage";
+import { readableTextColorFor } from "../model/color";
+import { ICON_CATALOG, iconIdForDigitCode } from "../model/icons";
+import { FormatToolbar } from "./FormatToolbar";
+import { useUndoRedoState } from "../hooks/useUndo";
 
 const LOCAL_ORIGIN = Symbol("local-edit");
 export { LOCAL_ORIGIN };
@@ -107,7 +115,61 @@ export function MindMapCanvas({
 
   // ---- клавиатурни комбинации, като във FreeMind ----
   useEffect(() => {
+    const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
     function onKeyDown(e: KeyboardEvent) {
+      if (!selectedId) return;
+
+      // Форматиращите комбинации (§7.1, §7.3-7.5) работят и по време на
+      // редакция на текста - не вмъкват символи, затова не пречат на писането
+      // и минават преди проверката "editingId", за разлика от навигацията.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === "KeyB") {
+        e.preventDefault();
+        toggleBold(doc, selectedId, LOCAL_ORIGIN);
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === "KeyI") {
+        e.preventDefault();
+        toggleItalic(doc, selectedId, LOCAL_ORIGIN);
+        return;
+      }
+      // Ctrl+Y (Windows/Linux) или Ctrl+Shift+Z (навсякъде) - и двете за повторение.
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === "KeyY") {
+        e.preventDefault();
+        undoManager.redo();
+        return;
+      }
+      // Червен текст: Alt+R на Windows/Linux, Ctrl+Shift+R (физически Ctrl, не Cmd)
+      // на macOS - вж. PLAN.md §7.4 защо точно тези комбинации.
+      const isRedShortcut = isMac
+        ? e.ctrlKey && e.shiftKey && !e.metaKey && e.code === "KeyR"
+        : e.altKey && !e.ctrlKey && e.code === "KeyR";
+      if (isRedShortcut) {
+        e.preventDefault();
+        toggleRedText(doc, selectedId, LOCAL_ORIGIN);
+        return;
+      }
+      // Икони: Ctrl+Shift+цифра и Ctrl+Shift+буква (§7.5).
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey) {
+        const digitIcon = iconIdForDigitCode(e.code);
+        const letterIcon =
+          e.code === "KeyA"
+            ? "star"
+            : e.code === "KeyE"
+              ? "exclaim"
+              : e.code === "KeyS"
+                ? "stop"
+                : e.code === "KeyD"
+                  ? "idea"
+                  : null;
+        const iconId = digitIcon ?? letterIcon;
+        if (iconId) {
+          e.preventDefault();
+          toggleIcon(doc, selectedId, iconId, LOCAL_ORIGIN);
+          return;
+        }
+      }
+
       if (editingId) return; // докато се редактира текст, стрелките и Enter пишат в полето
       const active = document.activeElement;
       if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
@@ -289,20 +351,35 @@ export function MindMapCanvas({
     setDropTarget(null);
   }
 
+  const { canUndo, canRedo } = useUndoRedoState(undoManager);
+  const selectedNode = nodes[selectedId];
+
   if (!layout) return <div className="mindmap-empty">{t.loading}</div>;
 
   return (
-    <div
-      ref={containerRef}
-      className="mindmap-viewport"
-      onWheel={onWheel}
-      onPointerDown={onBackgroundPointerDown}
-      onPointerMove={onBackgroundPointerMove}
-      onPointerUp={onBackgroundPointerUp}
-      onPointerCancel={onBackgroundPointerUp}
-      role="tree"
-      aria-label={t.a11yCanvas}
-    >
+    <>
+      {selectedNode && (
+        <FormatToolbar
+          doc={doc}
+          node={selectedNode}
+          origin={LOCAL_ORIGIN}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          onUndo={() => undoManager.undo()}
+          onRedo={() => undoManager.redo()}
+        />
+      )}
+      <div
+        ref={containerRef}
+        className="mindmap-viewport"
+        onWheel={onWheel}
+        onPointerDown={onBackgroundPointerDown}
+        onPointerMove={onBackgroundPointerMove}
+        onPointerUp={onBackgroundPointerUp}
+        onPointerCancel={onBackgroundPointerUp}
+        role="tree"
+        aria-label={t.a11yCanvas}
+      >
       <div
         className="mindmap-canvas"
         style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})` }}
@@ -354,7 +431,8 @@ export function MindMapCanvas({
           />
         ))}
       </div>
-    </div>
+      </div>
+    </>
   );
 }
 
@@ -431,7 +509,8 @@ function NodeBox({
         top: layoutNode.y,
         width: layoutNode.width,
         height: layoutNode.height,
-        borderColor: snapshot?.style?.color,
+        backgroundColor: snapshot?.style?.background,
+        color: snapshot?.style?.color ?? readableTextColorFor(snapshot?.style?.background),
       }}
       role="treeitem"
       tabIndex={selected ? 0 : -1}
@@ -461,16 +540,34 @@ function NodeBox({
             if (e.key === "Enter") {
               e.preventDefault();
               onCommitText(draft);
+              e.stopPropagation();
             } else if (e.key === "Escape") {
               e.preventDefault();
               onCancelEdit();
+              e.stopPropagation();
+            } else if (!(e.ctrlKey || e.metaKey || e.altKey)) {
+              // обикновено писане - спираме разпространението, за да не тръгне
+              // и към клавишите на платното (стрелки, интервал и т.н.)
+              e.stopPropagation();
             }
-            e.stopPropagation();
+            // комбинации с Ctrl/Alt/Cmd (удебелено, наклонено, цвят, икони) НЕ се
+            // спират тук - продължават към прозоречния слушател, за да работят и
+            // по време на редакция (вж. PLAN.md §7.1)
           }}
           onBlur={() => onCommitText(draft)}
         />
       ) : (
-        <span className={snapshot?.style?.bold ? "node-text bold" : "node-text"}>
+        <span
+          className="node-text"
+          style={{ fontWeight: snapshot?.style?.bold ? 700 : undefined, fontStyle: snapshot?.style?.italic ? "italic" : undefined }}
+        >
+          {snapshot?.style?.icons && snapshot.style.icons.length > 0 && (
+            <span className="node-icons">
+              {snapshot.style.icons.map((id, i) => (
+                <span key={`${id}-${i}`}>{ICON_CATALOG.find((icon) => icon.id === id)?.emoji}</span>
+              ))}
+            </span>
+          )}
           {layoutNode.text || t.emptyNode}
         </span>
       )}
