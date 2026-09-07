@@ -19,10 +19,12 @@ import {
   getNodesMap,
   getStylesArray,
   isAncestor,
+  isSafeLinkUrl,
   moveNode,
   reattachOrphans,
   setBackgroundColor,
   setCloud,
+  setLink,
   setTextColor,
   toggleBold,
   toggleIcon,
@@ -216,6 +218,23 @@ describe("стил на клетката (Фаза 7)", () => {
     expect(getChildren(doc, ROOT_ID)[0].style.cloud).toBe("#3d5a80");
     setCloud(doc, id, null);
     expect(getChildren(doc, ROOT_ID)[0].style.cloud).toBeUndefined();
+  });
+
+  it("клетка като линк: се задава и маха (§8.1)", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Възел");
+    setLink(doc, id, "https://example.com");
+    expect(getChildren(doc, ROOT_ID)[0].style.link).toBe("https://example.com");
+    setLink(doc, id, null);
+    expect(getChildren(doc, ROOT_ID)[0].style.link).toBeUndefined();
+  });
+
+  it("isSafeLinkUrl приема само http(s)/mailto, отказва javascript:", () => {
+    expect(isSafeLinkUrl("https://example.com")).toBe(true);
+    expect(isSafeLinkUrl("http://example.com")).toBe(true);
+    expect(isSafeLinkUrl("mailto:a@b.bg")).toBe(true);
+    expect(isSafeLinkUrl("javascript:alert(1)")).toBe(false);
+    expect(isSafeLinkUrl("не е адрес")).toBe(false);
   });
 });
 

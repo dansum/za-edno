@@ -4,8 +4,8 @@
 export type Language = "bg" | "en";
 
 export const LANGUAGES: { code: Language; label: string }[] = [
-  { code: "bg", label: "Български" },
-  { code: "en", label: "English" },
+  { code: "bg", label: "🇧🇬 Български" },
+  { code: "en", label: "🇬🇧 English" },
 ];
 
 const bg = {
@@ -39,7 +39,7 @@ const bg = {
 
   // клавиши
   shortcutsHint:
-    "Enter — нов брат · Tab/Insert — ново дете · F2 — редакция · Delete — изтрий · Space — сгъни/разгъни · Ctrl+Z/Ctrl+Y — отмени/повтори · Ctrl+B/Ctrl+I — удебелено/наклонено · Alt+R — червен текст",
+    "Enter — нов брат · Tab/Insert — ново дете · F2 — редакция · Delete — изтрий · Space — сгъни/разгъни · Ctrl+посока — мести възела · Alt+Enter — нов ред · Ctrl+Z/Ctrl+Y — отмени/повтори · Ctrl+B/Ctrl+I — удебелено/наклонено · Alt+R — червен текст",
 
   // търсене
   searchPlaceholder: "Търсене във възлите…",
@@ -101,6 +101,8 @@ const bg = {
   keyItalic: "наклонен текст",
   keyRedText: "червен текст (превключвател)",
   keyIcon: "добавя/маха иконата",
+  keyMoveNode: "мести възела в дървото (ред при нагоре/надолу, ниво при ляво/дясно)",
+  keyNewline: "нов ред вътре в клетката",
 
   // лента за форматиране
   toolbarBold: "Удебелено (Ctrl+B)",
@@ -115,6 +117,9 @@ const bg = {
   toolbarCloud: "Облак около клетката и поддървото ѝ",
   toolbarLink: "Свържи с друга клетка (стрелка) — после кликни целевата клетка, Esc отменя",
   linkingHint: "Изберете клетка, с която да се свърже — Esc отменя",
+  toolbarLinkCell: "Клетката като линк (уеб адрес) — клик отваря линка",
+  linkPrompt: "Уеб адрес (празно поле маха линка):",
+  linkInvalid: "Невалиден адрес — приемат се само http(s):// и mailto:.",
 
   // износ като изображение
   exportSvg: "Изнеси като изображение (SVG)",
@@ -170,7 +175,7 @@ const en: Dictionary = {
   newMapTitle: "New map",
 
   shortcutsHint:
-    "Enter — new sibling · Tab/Insert — new child · F2 — edit · Delete — remove · Space — collapse/expand · Ctrl+Z/Ctrl+Y — undo/redo · Ctrl+B/Ctrl+I — bold/italic · Alt+R — red text",
+    "Enter — new sibling · Tab/Insert — new child · F2 — edit · Delete — remove · Space — collapse/expand · Ctrl+arrow — move node · Alt+Enter — new line · Ctrl+Z/Ctrl+Y — undo/redo · Ctrl+B/Ctrl+I — bold/italic · Alt+R — red text",
 
   searchPlaceholder: "Search nodes…",
   searchNoResults: "No matches",
@@ -227,6 +232,8 @@ const en: Dictionary = {
   keyItalic: "italic text",
   keyRedText: "red text (toggle)",
   keyIcon: "add/remove the icon",
+  keyMoveNode: "move the node in the tree (reorder on up/down, level on left/right)",
+  keyNewline: "insert a new line inside the cell",
 
   toolbarBold: "Bold (Ctrl+B)",
   toolbarItalic: "Italic (Ctrl+I)",
@@ -240,6 +247,9 @@ const en: Dictionary = {
   toolbarCloud: "Cloud around the cell and its subtree",
   toolbarLink: "Link to another cell (arrow) — then click the target cell, Esc cancels",
   linkingHint: "Pick a cell to link to — Esc cancels",
+  toolbarLinkCell: "Cell as a link (web address) — click opens the link",
+  linkPrompt: "Web address (leave empty to remove the link):",
+  linkInvalid: "Invalid address — only http(s):// and mailto: are accepted.",
 
   exportSvg: "Export as image (SVG)",
   exportPng: "Export as image (PNG)",

@@ -2,8 +2,10 @@ import { useState } from "react";
 import * as Y from "yjs";
 import type { NodeSnapshot } from "../model/doc";
 import {
+  isSafeLinkUrl,
   setBackgroundColor,
   setCloud,
+  setLink,
   setTextColor,
   toggleBold,
   toggleIcon,
@@ -50,6 +52,26 @@ export function FormatToolbar({
   // показваме автоматично избрания светъл цвят вместо тъмния по подразбиране -
   // само визуално в бутона, не пипа модела (вж. PLAN.md §7.3).
   const autoTextColor = readableTextColorFor(node.style.background);
+
+  function handleSetLink() {
+    const current = node.style.link ?? "";
+    // eslint-disable-next-line no-alert
+    const input = window.prompt(t.linkPrompt, current);
+    if (input === null) return; // отказ
+    const trimmed = input.trim();
+    if (!trimmed) {
+      setLink(doc, node.id, null, origin);
+      return;
+    }
+    // удобство: "example.com" се приема за "https://example.com"
+    const normalized = /^[a-z][a-z0-9+.-]*:/i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    if (!isSafeLinkUrl(normalized)) {
+      // eslint-disable-next-line no-alert
+      window.alert(t.linkInvalid);
+      return;
+    }
+    setLink(doc, node.id, normalized, origin);
+  }
 
   return (
     <div className="format-toolbar" role="toolbar" aria-label={t.toolbarBold}>
@@ -144,6 +166,10 @@ export function FormatToolbar({
           />
         )}
       </div>
+
+      <button className={node.style.link ? "active" : ""} title={t.toolbarLinkCell} onClick={handleSetLink}>
+        🌐
+      </button>
 
       <button
         className={linkArmed ? "active" : ""}

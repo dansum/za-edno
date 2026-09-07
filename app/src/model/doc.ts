@@ -367,6 +367,28 @@ export function setCloud(doc: Y.Doc, nodeId: string, color: string | null, origi
   writeStyle(doc, nodeId, { ...current, cloud: color ?? undefined }, origin);
 }
 
+/** Клетката като линк (§8.1); `null`/липса маха линка. */
+export function setLink(doc: Y.Doc, nodeId: string, url: string | null, origin?: unknown): void {
+  const current = readStyle(doc, nodeId);
+  writeStyle(doc, nodeId, { ...current, link: url ?? undefined }, origin);
+}
+
+/**
+ * Само http(s)/mailto - блокира `javascript:` и други протоколи, с които
+ * линк, споделен през чужд файл/карта, би могъл да изпълни код при клик.
+ */
+export function isSafeLinkUrl(url: string): boolean {
+  try {
+    // БЕЗ base адрес: относителен низ без протокол (напр. счупен "LINK" от
+    // внесен файл) трябва да хвърли, не да се "разреши" тихо спрямо текущата
+    // страница - иначе всеки низ минава за "безопасен".
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" || parsed.protocol === "mailto:";
+  } catch {
+    return false;
+  }
+}
+
 export const RED_TEXT_COLOR = "#c0392b";
 const RED = RED_TEXT_COLOR;
 

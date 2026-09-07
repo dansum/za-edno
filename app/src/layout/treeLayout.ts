@@ -29,18 +29,31 @@ const NODE_H = 36;
 const CHAR_W = 8;
 const PADDING_X = 20;
 const MIN_W = 60;
+const LINE_H = 20; // височина на един ред текст (Alt+Enter за нов ред, §8.1)
+const LINE_V_PADDING = 16;
 
 const ICON_W = 20; // приблизителна ширина на едно емоджи-иконка
 
+function textLines(text: string): string[] {
+  return (text || " ").split("\n");
+}
+
 /**
- * Приблизителна ширина на клетката. Отчита удебелянето (по-широки букви) и
- * иконите пред текста (§7.1, §7.5) - иначе клетката излиза по-тясна от
- * съдържанието си и текстът/иконите изтичат извън рамката.
+ * Приблизителна ширина на клетката. Отчита удебелянето (по-широки букви),
+ * иконите пред текста (§7.1, §7.5) и само НАЙ-ДЪЛГИЯ ред при многоредов текст
+ * (Alt+Enter, §8.1) - иначе клетката излиза по-тясна от съдържанието си и
+ * текстът/иконите изтичат извън рамката.
  */
 function estimateWidth(text: string, style?: NodeStyle): number {
   const charW = style?.bold ? CHAR_W + 1.5 : CHAR_W;
   const iconsW = (style?.icons?.length ?? 0) * ICON_W;
-  return Math.max(MIN_W, text.length * charW + PADDING_X + iconsW);
+  const longestLine = Math.max(...textLines(text).map((l) => l.length));
+  return Math.max(MIN_W, longestLine * charW + PADDING_X + iconsW);
+}
+
+/** Височина на клетката - расте с броя редове при многоредов текст (Alt+Enter). */
+function estimateHeight(text: string): number {
+  return Math.max(NODE_H, textLines(text).length * LINE_H + LINE_V_PADDING);
 }
 
 interface SubtreeResult {
@@ -54,16 +67,17 @@ function layoutSubtree(
   node: NodeSnapshot,
 ): SubtreeResult {
   const width = estimateWidth(node.text || " ", node.style);
+  const ownHeight = estimateHeight(node.text || " ");
   if (node.collapsed) {
     return {
-      height: NODE_H,
+      height: ownHeight,
       layout: (originX, centerY, side) => [
         {
           id: nodeId,
           x: side === "right" ? originX : originX - width,
-          y: centerY - NODE_H / 2,
+          y: centerY - ownHeight / 2,
           width,
-          height: NODE_H,
+          height: ownHeight,
           side,
           parentId: node.parent,
           text: node.text,
@@ -77,14 +91,14 @@ function layoutSubtree(
   const children = getChildren(doc, nodeId);
   if (children.length === 0) {
     return {
-      height: NODE_H,
+      height: ownHeight,
       layout: (originX, centerY, side) => [
         {
           id: nodeId,
           x: side === "right" ? originX : originX - width,
-          y: centerY - NODE_H / 2,
+          y: centerY - ownHeight / 2,
           width,
-          height: NODE_H,
+          height: ownHeight,
           side,
           parentId: node.parent,
           text: node.text,
@@ -98,7 +112,7 @@ function layoutSubtree(
   const childResults = children.map((c) => ({ id: c.id, node: c, sub: layoutSubtree(doc, c.id, c) }));
   const totalChildrenHeight =
     childResults.reduce((sum, c) => sum + c.sub.height, 0) + V_GAP * (childResults.length - 1);
-  const height = Math.max(NODE_H, totalChildrenHeight);
+  const height = Math.max(ownHeight, totalChildrenHeight);
 
   return {
     height,
@@ -107,9 +121,9 @@ function layoutSubtree(
         {
           id: nodeId,
           x: side === "right" ? originX : originX - width,
-          y: centerY - NODE_H / 2,
+          y: centerY - ownHeight / 2,
           width,
-          height: NODE_H,
+          height: ownHeight,
           side,
           parentId: node.parent,
           text: node.text,
@@ -139,6 +153,7 @@ export function computeLayout(doc: Y.Doc, root: NodeSnapshot): LayoutResult {
   const rightChildren = allChildren.filter((c) => c.side !== "left");
 
   const rootWidth = estimateWidth(root.text || " ", root.style);
+  const rootHeight = estimateHeight(root.text || " ");
   const nodes: LayoutNode[] = [];
   const edges: { from: string; to: string }[] = [];
 
@@ -163,9 +178,9 @@ export function computeLayout(doc: Y.Doc, root: NodeSnapshot): LayoutResult {
   nodes.push({
     id: ROOT_ID,
     x: -rootWidth / 2,
-    y: -NODE_H / 2,
+    y: -rootHeight / 2,
     width: rootWidth,
-    height: NODE_H,
+    height: rootHeight,
     side: null,
     parentId: null,
     text: root.text,

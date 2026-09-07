@@ -52,6 +52,7 @@ function nodeToXml(doc: Y.Doc, node: NodeSnapshot, depth: number, linksByFrom: M
   // Признакът се записва винаги при сгънат възел, дори да няма деца в момента:
   // иначе цикълът внос -> износ -> внос губи състоянието, зададено от потребителя.
   if (node.collapsed) attrs.push(`FOLDED="true"`);
+  if (node.style.link) attrs.push(`LINK="${escapeXml(node.style.link)}"`);
   if (node.style.color) attrs.push(`COLOR="${node.style.color}"`);
   if (node.style.background) attrs.push(`BACKGROUND_COLOR="${node.style.background}"`);
 
@@ -168,6 +169,7 @@ export function parseFreeMind(xml: string): PlainNode {
     const font = el.querySelector(":scope > font");
     const cloud = el.querySelector(":scope > cloud");
     const style: NodeStyle = {};
+    if (el.getAttribute("LINK")) style.link = el.getAttribute("LINK")!;
     if (el.getAttribute("COLOR")) style.color = el.getAttribute("COLOR")!;
     if (el.getAttribute("BACKGROUND_COLOR")) style.background = el.getAttribute("BACKGROUND_COLOR")!;
     if (font?.getAttribute("BOLD") === "true") style.bold = true;

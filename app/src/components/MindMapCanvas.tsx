@@ -7,6 +7,8 @@ import {
   addSiblingAfter,
   deleteLink,
   deleteNodeSubtree,
+  getChildren,
+  isSafeLinkUrl,
   moveNode,
   setNodeText,
   toggleBold,
@@ -229,6 +231,14 @@ export function MindMapCanvas({
       } else if (e.key === " ") {
         e.preventDefault();
         toggleCollapsed(doc, selectedId, LOCAL_ORIGIN);
+      } else if (
+        (e.ctrlKey || e.metaKey) &&
+        !e.altKey &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight")
+      ) {
+        // Ctrl+посока мести възела в дървото (§8.4), обикновена посока само избира.
+        e.preventDefault();
+        moveInDirection(e.key);
       } else if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight") {
         e.preventDefault();
         navigate(e.key);
@@ -240,6 +250,50 @@ export function MindMapCanvas({
       } else if ((e.ctrlKey || e.metaKey) && e.code === "KeyF") {
         e.preventDefault(); // изместваме търсенето на браузъра
         onRequestSearch();
+      }
+    }
+
+    /**
+     * Ctrl+посока мести възела в дървото (§8.4), не само избора:
+     * Ctrl+Нагоре/Надолу разменя реда му със съседен брат; Ctrl+Ляво/Дясно
+     * го премества едно ниво навън (към братята на родителя си) или навътре
+     * (като дете на съседен брат) - посоката е спрямо страната му, огледално
+     * на обикновената навигация със стрелки по-долу.
+     */
+    function moveInDirection(key: string) {
+      if (selectedId === ROOT_ID) return;
+      const current = nodes[selectedId];
+      const parentId = current?.parent;
+      if (!current || !parentId) return;
+
+      if (key === "ArrowUp" || key === "ArrowDown") {
+        const siblings = getChildren(doc, parentId);
+        const idx = siblings.findIndex((s) => s.id === selectedId);
+        const swapIdx = key === "ArrowUp" ? idx - 1 : idx + 1;
+        if (swapIdx < 0 || swapIdx >= siblings.length) return;
+        const beforeOrder = key === "ArrowUp" ? (siblings[swapIdx - 1]?.order ?? null) : siblings[swapIdx].order;
+        const afterOrder = key === "ArrowUp" ? siblings[swapIdx].order : (siblings[swapIdx + 1]?.order ?? null);
+        moveNode(doc, selectedId, parentId, beforeOrder, afterOrder, LOCAL_ORIGIN);
+        return;
+      }
+
+      const promote = (key === "ArrowLeft" && current.side !== "left") || (key === "ArrowRight" && current.side === "left");
+      if (promote) {
+        // едно ниво навън: става брат на родителя си, веднага след него
+        if (parentId === ROOT_ID) return; // вече е на първо ниво под корена
+        const parentNode = nodes[parentId];
+        const grandParentId = parentNode?.parent;
+        if (!grandParentId) return;
+        const uncles = getChildren(doc, grandParentId);
+        const parentIdx = uncles.findIndex((u) => u.id === parentId);
+        moveNode(doc, selectedId, grandParentId, parentNode.order, uncles[parentIdx + 1]?.order ?? null, LOCAL_ORIGIN);
+      } else {
+        // едно ниво навътре: става дете на съседния брат (предишния, ако има)
+        const siblings = getChildren(doc, parentId);
+        const idx = siblings.findIndex((s) => s.id === selectedId);
+        const newParent = idx > 0 ? siblings[idx - 1] : siblings[idx + 1];
+        if (!newParent) return;
+        moveNode(doc, selectedId, newParent.id, null, null, LOCAL_ORIGIN);
       }
     }
 
@@ -609,13 +663,18 @@ function NodeBox({
         </div>
       )}
       {editing ? (
-        <input
+        <textarea
           autoFocus
           className="node-edit-input"
+          rows={draft.split("\n").length}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            if (e.key === "Enter" && e.altKey) {
+              // Alt+Enter вмъква нов ред (§8.1) - оставяме си стандартното
+              // поведение на textarea за Enter, само спираме разпространението.
+              e.stopPropagation();
+            } else if (e.key === "Enter") {
               e.preventDefault();
               onCommitText(draft);
               e.stopPropagation();
@@ -648,6 +707,22 @@ function NodeBox({
           )}
           {layoutNode.text || t.emptyNode}
         </span>
+      )}
+      {snapshot?.style.link && (
+        <a
+          className="node-link-btn"
+          href={snapshot.style.link}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={snapshot.style.link}
+          onClick={(e) => {
+            e.stopPropagation();
+            // защита в дълбочина - линкът може да идва от внесен чужд .mm файл
+            if (!isSafeLinkUrl(snapshot.style.link!)) e.preventDefault();
+          }}
+        >
+          🌐
+        </a>
       )}
       {layoutNode.hasChildren && (
         <button

@@ -9,6 +9,7 @@ import {
   getChildren,
   setBackgroundColor,
   setCloud,
+  setLink,
   setNodeText,
   setTextColor,
   toggleBold,
@@ -163,5 +164,18 @@ describe("износ", () => {
     const bAfter = childrenAfter.find((c) => c.text === "B")!;
     expect(aAfter.style.cloud).toBe("#3d5a80");
     expect(getAllLinks(doc2)).toEqual([{ id: expect.any(String), from: aAfter.id, to: bAfter.id }]);
+  });
+
+  it("клетката като линк оцелява износ -> внос (§8.1)", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Възел");
+    setLink(doc, id, "https://example.com/страница");
+
+    const xml = exportToFreeMind(doc);
+    expect(xml).toContain('LINK="https://example.com/');
+
+    const doc2 = createMindMapDoc();
+    replaceDocWithTree(doc2, parseFreeMind(xml));
+    expect(getChildren(doc2, ROOT_ID)[0].style.link).toBe("https://example.com/страница");
   });
 });
