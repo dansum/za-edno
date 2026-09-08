@@ -132,6 +132,39 @@ export function MindMapCanvas({
     centerOnNode.current(ROOT_ID);
   }, [layout]);
 
+  // Автоматично превъртане до избрания възел, ако излезе извън видимата
+  // част на платното (§8.10, като във FreeMind) - за разлика от "Центрирай"
+  // (менюто "Изглед", §8.8), тук местим само толкова, колкото възелът да
+  // влезе в изгледа, не непременно до средата (по-малко "скачащо").
+  // Ключувано по selectedId, не по layout: инак всяка редакция другаде по
+  // картата (която прекомпютва layout) би отместила изгледа отново, макар
+  // изборът да не се е променил.
+  const lastAutoPannedId = useRef<string | null>(null);
+  useEffect(() => {
+    if (lastAutoPannedId.current === selectedId) return;
+    lastAutoPannedId.current = selectedId;
+    const target = layout?.nodes.find((n) => n.id === selectedId);
+    const viewport = containerRef.current;
+    if (!target || !viewport) return;
+    const rect = viewport.getBoundingClientRect();
+    const MARGIN = 40;
+    // същото изместване (40%/40%) като при "Центрирай" по-горе
+    const screenX = rect.width * 0.4 + pan.x + target.x * zoom;
+    const screenY = rect.height * 0.4 + pan.y + target.y * zoom;
+    const screenRight = screenX + target.width * zoom;
+    const screenBottom = screenY + target.height * zoom;
+
+    let dx = 0;
+    let dy = 0;
+    if (screenX < MARGIN) dx = MARGIN - screenX;
+    else if (screenRight > rect.width - MARGIN) dx = rect.width - MARGIN - screenRight;
+    if (screenY < MARGIN) dy = MARGIN - screenY;
+    else if (screenBottom > rect.height - MARGIN) dy = rect.height - MARGIN - screenBottom;
+
+    if (dx !== 0 || dy !== 0) setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId]);
+
   // ---- клавиатурни комбинации, като във FreeMind ----
   useEffect(() => {
     const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
