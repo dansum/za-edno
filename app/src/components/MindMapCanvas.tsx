@@ -203,31 +203,17 @@ export function MindMapCanvas({
 
       if (e.key === "Enter") {
         e.preventDefault();
-        if (selectedId === ROOT_ID) {
-          const id = addChild(doc, ROOT_ID, "", LOCAL_ORIGIN);
-          onSelect(id);
-          setEditingId(id);
-        } else {
-          const id = addSiblingAfter(doc, selectedId, "", LOCAL_ORIGIN);
-          if (id) {
-            onSelect(id);
-            setEditingId(id);
-          }
-        }
+        addSiblingToSelected(selectedId);
       } else if (e.key === "Tab" || e.key === "Insert") {
         e.preventDefault();
-        const id = addChild(doc, selectedId, "", LOCAL_ORIGIN);
-        onSelect(id);
-        setEditingId(id);
+        addChildToSelected(selectedId);
       } else if (e.key === "F2") {
         e.preventDefault();
         setEditingId(selectedId);
       } else if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedId === ROOT_ID) return;
         e.preventDefault();
-        const parent = nodes[selectedId]?.parent ?? ROOT_ID;
-        deleteNodeSubtree(doc, selectedId, LOCAL_ORIGIN);
-        onSelect(parent);
+        deleteSelected(selectedId);
       } else if (e.key === " ") {
         e.preventDefault();
         toggleCollapsed(doc, selectedId, LOCAL_ORIGIN);
@@ -410,6 +396,34 @@ export function MindMapCanvas({
     };
   }, [dragId]);
 
+  // Действия за изграждане на дървото - споделени между клавиатурата
+  // (по-долу) и бутоните в лентата за форматиране, за да работят и на
+  // телефон/таблет без физическа клавиатура (§8.6).
+  function addSiblingToSelected(nodeId: string) {
+    if (nodeId === ROOT_ID) {
+      const id = addChild(doc, ROOT_ID, "", LOCAL_ORIGIN);
+      onSelect(id);
+      setEditingId(id);
+    } else {
+      const id = addSiblingAfter(doc, nodeId, "", LOCAL_ORIGIN);
+      if (id) {
+        onSelect(id);
+        setEditingId(id);
+      }
+    }
+  }
+  function addChildToSelected(nodeId: string) {
+    const id = addChild(doc, nodeId, "", LOCAL_ORIGIN);
+    onSelect(id);
+    setEditingId(id);
+  }
+  function deleteSelected(nodeId: string) {
+    if (nodeId === ROOT_ID) return;
+    const parent = nodes[nodeId]?.parent ?? ROOT_ID;
+    deleteNodeSubtree(doc, nodeId, LOCAL_ORIGIN);
+    onSelect(parent);
+  }
+
   function onNodePointerDown(e: React.PointerEvent, id: string) {
     if (id === ROOT_ID) return;
     e.stopPropagation();
@@ -444,6 +458,7 @@ export function MindMapCanvas({
 
   const { canUndo, canRedo } = useUndoRedoState(undoManager);
   const selectedNode = nodes[selectedId];
+  const selectedHasChildren = layout?.nodes.find((n) => n.id === selectedId)?.hasChildren ?? false;
 
   if (!layout) return <div className="mindmap-empty">{t.loading}</div>;
 
@@ -460,6 +475,11 @@ export function MindMapCanvas({
           onRedo={() => undoManager.redo()}
           linkArmed={linkingFrom === selectedNode.id}
           onArmLink={() => setLinkingFrom((cur) => (cur === selectedNode.id ? null : selectedNode.id))}
+          hasChildren={selectedHasChildren}
+          onAddChild={() => addChildToSelected(selectedNode.id)}
+          onAddSibling={() => addSiblingToSelected(selectedNode.id)}
+          onDelete={() => deleteSelected(selectedNode.id)}
+          onToggleCollapse={() => toggleCollapsed(doc, selectedNode.id, LOCAL_ORIGIN)}
         />
       )}
       {linkingFrom && <div className="mindmap-linking-hint">{t.linkingHint}</div>}

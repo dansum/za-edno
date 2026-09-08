@@ -652,6 +652,18 @@ kbd {
   .help-panel {
     width: 94vw;
   }
+
+  /* по-едри бутони за пръст (§8.6) - 30px са добри за мишка, не за тап */
+  .format-toolbar {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .format-toolbar button {
+    min-width: 40px;
+    height: 40px;
+    font-size: 16px;
+  }
 }
 
 /* ---------- лента за форматиране (Фаза 7) ---------- */

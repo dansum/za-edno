@@ -2,6 +2,7 @@ import { useState } from "react";
 import * as Y from "yjs";
 import type { NodeSnapshot } from "../model/doc";
 import {
+  ROOT_ID,
   isSafeLinkUrl,
   setBackgroundColor,
   setCloud,
@@ -30,6 +31,11 @@ export function FormatToolbar({
   onRedo,
   linkArmed,
   onArmLink,
+  hasChildren,
+  onAddChild,
+  onAddSibling,
+  onDelete,
+  onToggleCollapse,
 }: {
   doc: Y.Doc;
   node: NodeSnapshot;
@@ -40,6 +46,12 @@ export function FormatToolbar({
   onRedo: () => void;
   linkArmed: boolean;
   onArmLink: () => void;
+  /** Дали избраната клетка има деца - управлява бутона сгъни/разгъни (§8.6). */
+  hasChildren: boolean;
+  onAddChild: () => void;
+  onAddSibling: () => void;
+  onDelete: () => void;
+  onToggleCollapse: () => void;
 }) {
   const t = useT();
   const [openPicker, setOpenPicker] = useState<"text" | "background" | "cloud" | "icons" | null>(null);
@@ -75,6 +87,23 @@ export function FormatToolbar({
 
   return (
     <div className="format-toolbar" role="toolbar" aria-label={t.toolbarBold}>
+      {/* Действия за изграждане на дървото (§8.6) - работят с тап, не само с
+          клавиш, за да могат телефон/таблет без клавиатура да редактират. */}
+      <button title={t.toolbarAddSibling} onClick={onAddSibling}>
+        ➕
+      </button>
+      <button title={t.toolbarAddChild} onClick={onAddChild}>
+        ➕▸
+      </button>
+      <button title={node.collapsed ? t.expand : t.collapse} disabled={!hasChildren} onClick={onToggleCollapse}>
+        {node.collapsed ? "▸" : "▾"}
+      </button>
+      <button title={t.toolbarDelete} disabled={node.id === ROOT_ID} onClick={onDelete}>
+        🗑
+      </button>
+
+      <span className="format-toolbar-sep" />
+
       <button
         className={node.style.bold ? "active" : ""}
         title={t.toolbarBold}

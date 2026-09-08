@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { LANGUAGES, dictionaries, type Language } from "../i18n/translations";
 import { listMyMaps, removeMyMap, type MyMapEntry } from "../registry/myMaps";
+import { generateRoomId } from "../roomId";
 import "../App.css";
 import "./admin.css";
 
@@ -70,7 +71,7 @@ export function AdminApp() {
   }
 
   function handleNewMap() {
-    const roomId = `map-${Math.random().toString(36).slice(2, 10)}`;
+    const roomId = generateRoomId();
     window.location.href = `index.html?room=${roomId}`;
   }
 

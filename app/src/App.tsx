@@ -10,13 +10,14 @@ import { HelpPanel } from "./components/HelpPanel";
 import { SearchBar, EMPTY_SEARCH, type SearchState } from "./components/SearchBar";
 import { LanguageProvider, useLanguage } from "./i18n/useLanguage";
 import { LANGUAGES } from "./i18n/translations";
+import { generateRoomId } from "./roomId";
 import "./App.css";
 
 function getRoomIdFromUrl(): string {
   const params = new URLSearchParams(window.location.search);
   let room = params.get("room");
   if (!room) {
-    room = `map-${Math.random().toString(36).slice(2, 10)}`;
+    room = generateRoomId();
     params.set("room", room);
     window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}`);
   }
