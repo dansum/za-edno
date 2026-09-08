@@ -65,6 +65,27 @@ describe("модел на данните", () => {
     expect(result.reason).toBe("self");
   });
 
+  it("пренареждане между братя от корена пази страната (Ctrl+нагоре/надолу, §8.5)", () => {
+    // Регресия: moveNode прекомпилираше страната с pickBalancedSide при ВСЯКО
+    // местене под корена, включително чисто пренареждане на реда - възел от
+    // дясната страна можеше да прескочи наляво само защото в момента там е
+    // имало по-малко деца, макар да не се е местил между страните изобщо.
+    const doc = createMindMapDoc();
+    addChild(doc, ROOT_ID, "A"); // дясна страна (първо дете)
+    addChild(doc, ROOT_ID, "B"); // лява страна (балансирано редуване)
+    const c = addChild(doc, ROOT_ID, "C"); // дясна страна
+    const before = getChildren(doc, ROOT_ID);
+    const sideBefore = before.find((n) => n.id === c)!.side;
+    const cOrder = before.find((n) => n.id === c)!.order;
+    const aOrder = before.find((n) => n.text === "A")!.order;
+
+    // местим C непосредствено след A - същият родител (коренът), само нов ред
+    const result = moveNode(doc, c, ROOT_ID, aOrder, cOrder);
+    expect(result.ok).toBe(true);
+    const cAfter = getChildren(doc, ROOT_ID).find((n) => n.id === c)!;
+    expect(cAfter.side).toBe(sideBefore);
+  });
+
   it("позволява местене, което не създава цикъл", () => {
     const doc = createMindMapDoc();
     const a = addChild(doc, ROOT_ID, "A");

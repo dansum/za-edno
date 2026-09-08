@@ -478,8 +478,15 @@ export function moveNode(
   if (!n) return { ok: false };
 
   const order = generateKeyBetween(beforeOrder, afterOrder);
-  // страна има смисъл само за преките деца на корена
-  const side: Side = newParentId === ROOT_ID ? pickBalancedSide(doc) : null;
+  // Страната се преизчислява само при истинска смяна на родителя (напр.
+  // влачене към нов клон). Чисто пренареждане между братя от СЪЩИЯ родител
+  // (Ctrl+нагоре/надолу, §8.5) трябва да пази досегашната страна - иначе
+  // pickBalancedSide може да прехвърли възела на другата страна на корена,
+  // само защото в момента там има по-малко деца, макар местенето да не е
+  // имало нищо общо със смяна на страна.
+  const currentParentId = n.get("parent") as string | null;
+  const side: Side =
+    newParentId === currentParentId ? (n.get("side") as Side) : newParentId === ROOT_ID ? pickBalancedSide(doc) : null;
   doc.transact(() => {
     n.set("parent", newParentId);
     n.set("order", order);
