@@ -34,6 +34,8 @@ export { LOCAL_ORIGIN };
 
 export interface CanvasHandle {
   focusNode: (nodeId: string) => void;
+  /** Отмества изгледа с (dxPx, dyPx) екранни пиксела - за менюто "Изглед" (§8.8). */
+  panBy: (dxPx: number, dyPx: number) => void;
 }
 
 interface Props {
@@ -117,6 +119,7 @@ export function MindMapCanvas({
         onSelect(nodeId);
         centerOnNode.current(nodeId);
       },
+      panBy: (dxPx, dyPx) => setPan((p) => ({ x: p.x + dxPx, y: p.y + dyPx })),
     };
   }, [canvasRef, onSelect]);
 

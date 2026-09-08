@@ -6,6 +6,7 @@ import { MindMapCanvas, LOCAL_ORIGIN, type CanvasHandle } from "./components/Min
 import { PresenceBar, usePresence } from "./components/PresenceBar";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { FileMenu } from "./components/FileMenu";
+import { ViewMenu } from "./components/ViewMenu";
 import { HelpPanel } from "./components/HelpPanel";
 import { SearchBar, EMPTY_SEARCH, type SearchState } from "./components/SearchBar";
 import { LanguageProvider, useLanguage } from "./i18n/useLanguage";
@@ -85,6 +86,7 @@ function AppShell() {
           <button onClick={openSearch}>{t.search}</button>
           <button onClick={() => setHistoryOpen(true)}>{t.history}</button>
           <FileMenu doc={doc} onImported={() => setSelectedId(ROOT_ID)} />
+          <ViewMenu canvasRef={canvasRef} />
           <button onClick={() => setHelpOpen(true)}>{t.help}</button>
           <a className="admin-link-btn" href="admin.html">
             {t.adminTitle}
