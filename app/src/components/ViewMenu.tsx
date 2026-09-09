@@ -2,11 +2,7 @@ import { useState } from "react";
 import { ROOT_ID } from "../model/doc";
 import type { CanvasHandle } from "./MindMapCanvas";
 import { useT } from "../i18n/useLanguage";
-
-// 1cm = 37.7952755906px по дефиницията на CSS за референтен пиксел (96dpi) -
-// не е физически точно на всеки екран, но е стандартният начин да се преведе
-// "сантиметър" в уеб контекст (§8.8).
-const PAN_STEP_PX = Math.round(2 * 37.7952755906);
+import { PAN_STEP_PX } from "../panStep";
 
 export function ViewMenu({ canvasRef }: { canvasRef: React.MutableRefObject<CanvasHandle | null> }) {
   const t = useT();

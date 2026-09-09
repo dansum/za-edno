@@ -31,6 +31,7 @@ import { readableTextColorFor } from "../model/color";
 import { ICON_CATALOG, iconIdForDigitCode } from "../model/icons";
 import { FormatToolbar } from "./FormatToolbar";
 import { useUndoRedoState } from "../hooks/useUndo";
+import { PAN_STEP_PX } from "../panStep";
 
 const LOCAL_ORIGIN = Symbol("local-edit");
 export { LOCAL_ORIGIN };
@@ -78,6 +79,11 @@ export function MindMapCanvas({
   // следващият кликнат възел довършва стрелката от `linkingFrom` към него.
   const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  // Вярно след щракане на празно място по платното (§8.14) - докато е така,
+  // стрелките местят изгледа, вместо да навигират между възлите. Изчиства се
+  // при истинска смяна на избрания възел (клик върху възел, търсене, навигация).
+  const [canvasFocused, setCanvasFocused] = useState(false);
+  useEffect(() => setCanvasFocused(false), [selectedId]);
 
   const matchSet = useMemo(() => new Set(search.matches), [search.matches]);
 
@@ -183,6 +189,23 @@ export function MindMapCanvas({
         e.preventDefault();
         deleteLink(doc, selectedLinkId, LOCAL_ORIGIN);
         setSelectedLinkId(null);
+        return;
+      }
+      // Щракане на празно място по платното (§8.14): стрелките местят изгледа
+      // вместо да навигират между възлите - последно избраният възел остава
+      // избран, но вече не е "фокусът" за клавиатурата.
+      if (
+        canvasFocused &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.altKey &&
+        (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight")
+      ) {
+        e.preventDefault();
+        if (e.key === "ArrowLeft") setPan((p) => ({ ...p, x: p.x + PAN_STEP_PX }));
+        else if (e.key === "ArrowRight") setPan((p) => ({ ...p, x: p.x - PAN_STEP_PX }));
+        else if (e.key === "ArrowUp") setPan((p) => ({ ...p, y: p.y + PAN_STEP_PX }));
+        else setPan((p) => ({ ...p, y: p.y - PAN_STEP_PX }));
         return;
       }
       if (!selectedId) return;
@@ -381,7 +404,7 @@ export function MindMapCanvas({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [doc, selectedId, editingId, layout, nodes, onSelect, undoManager, onRequestSearch, linkingFrom, selectedLinkId]);
+  }, [doc, selectedId, editingId, layout, nodes, onSelect, undoManager, onRequestSearch, linkingFrom, selectedLinkId, canvasFocused]);
 
   // ---- панорама и мащаб на платното ----
   function onWheel(e: React.WheelEvent) {
@@ -412,6 +435,7 @@ export function MindMapCanvas({
       return;
     }
     if (e.target !== e.currentTarget) return;
+    setCanvasFocused(true);
     panState.current = { startX: e.clientX, startY: e.clientY, panX: pan.x, panY: pan.y };
     (e.target as Element).setPointerCapture(e.pointerId);
   }
@@ -541,6 +565,7 @@ export function MindMapCanvas({
   // Клик върху възел: обикновено избира, но докато сме "въоръжени" за връзка
   // (§8.2) вместо това довършва стрелката към кликнатия възел.
   function onNodeClick(id: string) {
+    setCanvasFocused(false);
     if (linkingFrom) {
       if (linkingFrom !== id) addLink(doc, linkingFrom, id, LOCAL_ORIGIN);
       setLinkingFrom(null);

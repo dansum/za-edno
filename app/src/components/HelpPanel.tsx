@@ -8,6 +8,7 @@ const KEYS: { keys: string; labelKey: keyof ReturnType<typeof useT> }[] = [
   { keys: "Delete", labelKey: "keyDelete" },
   { keys: "Space", labelKey: "keySpace" },
   { keys: "↑ ↓ ← →", labelKey: "keyArrows" },
+  { keys: "↑ ↓ ← → (след клик на празно)", labelKey: "keyArrowsCanvas" },
   { keys: "Ctrl + ↑ ↓ ← →", labelKey: "keyMoveNode" },
   { keys: "Alt + Enter", labelKey: "keyNewline" },
   { keys: "Ctrl + Z", labelKey: "keyUndo" },
