@@ -146,6 +146,27 @@ body {
   box-shadow: 0 0 0 3px rgba(129, 178, 154, 0.45);
 }
 
+/* Подсказка какво ще стане при пускане (§8.13): рамка = ще стане дете,
+   черта горе/долу = ще застане като брат над/под целевата клетка. */
+.mindmap-node.drop-before,
+.mindmap-node.drop-after {
+  box-shadow: none;
+  border-color: #cfcfc8;
+}
+
+.mindmap-node.drop-before {
+  border-top: 4px solid #2a7a4f;
+}
+
+.mindmap-node.drop-after {
+  border-bottom: 4px solid #2a7a4f;
+}
+
+.mindmap-node.drop-before.root,
+.mindmap-node.drop-after.root {
+  border-color: #2a3d45;
+}
+
 .mindmap-node.dragging {
   opacity: 0.5;
 }

@@ -10,6 +10,7 @@ import {
   getChildren,
   isSafeLinkUrl,
   moveNode,
+  setNodeSide,
   setNodeText,
   toggleBold,
   toggleCollapsed,
@@ -21,6 +22,8 @@ import type { LinkInfo, NodeSnapshot } from "../model/doc";
 import { computeLayout } from "../layout/treeLayout";
 import type { LayoutNode } from "../layout/treeLayout";
 import { computeClouds, computeLinkPaths } from "../layout/overlays";
+import { dropZoneAt } from "../layout/dropZone";
+import type { DropZone } from "../layout/dropZone";
 import type { PresenceUser } from "./PresenceBar";
 import type { SearchState } from "./SearchBar";
 import { useT } from "../i18n/useLanguage";
@@ -70,6 +73,7 @@ export function MindMapCanvas({
   const [zoom, setZoom] = useState(1);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dropZone, setDropZone] = useState<DropZone>("child");
   // Режим "свързване" (§8.2): въоръжен от бутона 🔗 в лентата за форматиране;
   // следващият кликнат възел довършва стрелката от `linkingFrom` към него.
   const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
@@ -299,10 +303,32 @@ export function MindMapCanvas({
         return;
       }
 
-      const promote = (key === "ArrowLeft" && current.side !== "left") || (key === "ArrowRight" && current.side === "left");
-      if (promote) {
+      // "Към корена" зависи от страната, на която стои възелът - огледално
+      // на обикновената навигация със стрелки. Взима се страната от
+      // ОФОРМЛЕНИЕТО, не от модела: моделът пази страна само за преките деца
+      // на корена, а по-навътре я наследяват при рисуването - без това
+      // клетките в лявото поддърво се местеха в обратната посока.
+      const isLeftSide = (layout?.nodes.find((n) => n.id === selectedId)?.side ?? current.side) === "left";
+      const towardRoot = isLeftSide ? key === "ArrowRight" : key === "ArrowLeft";
+
+      if (parentId === ROOT_ID) {
+        // Първо ниво (§8.13): "към корена" го прехвърля ОТ ДРУГАТА СТРАНА на
+        // корена - дотук това не правеше нищо. "Навън" го вкарва под съседен
+        // брат, но само от СЪЩАТА страна: иначе лява клетка кацаше под
+        // клетка отдясно, което на екрана изглежда като скок през корена.
+        if (towardRoot) {
+          setNodeSide(doc, selectedId, isLeftSide ? "right" : "left", LOCAL_ORIGIN);
+          return;
+        }
+        const sameSide = getChildren(doc, ROOT_ID).filter((s) => (s.side === "left") === isLeftSide);
+        const idx = sameSide.findIndex((s) => s.id === selectedId);
+        const newParent = idx > 0 ? sameSide[idx - 1] : sameSide[idx + 1];
+        if (newParent) moveNode(doc, selectedId, newParent.id, null, null, LOCAL_ORIGIN);
+        return;
+      }
+
+      if (towardRoot) {
         // едно ниво навън: става брат на родителя си, веднага след него
-        if (parentId === ROOT_ID) return; // вече е на първо ниво под корена
         const parentNode = nodes[parentId];
         const grandParentId = parentNode?.parent;
         if (!grandParentId) return;
@@ -468,16 +494,48 @@ export function MindMapCanvas({
   function onNodePointerEnter(id: string) {
     if (dragId && dragId !== id) setDropTarget(id);
   }
-  function onNodePointerUp() {
-    if (dragId && dropTarget && dragId !== dropTarget) {
-      const result = moveNode(doc, dragId, dropTarget, null, null, LOCAL_ORIGIN);
-      if (!result.ok) {
-        // eslint-disable-next-line no-alert
-        console.warn("Местенето е отказано:", result.reason);
-      }
+  /** Следи в коя зона на целевата клетка е показалецът, за да се вижда какво ще стане (§8.13). */
+  function onNodePointerMove(e: React.PointerEvent, id: string) {
+    if (!dragId || dragId === id) return;
+    setDropTarget(id);
+    setDropZone(dropZoneAt(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY));
+  }
+  function onNodePointerUp(e: React.PointerEvent, id: string) {
+    if (dragId && dragId !== id) {
+      applyDrop(dragId, id, dropZoneAt(e.currentTarget.getBoundingClientRect(), e.clientX, e.clientY));
     }
     setDragId(null);
     setDropTarget(null);
+  }
+
+  /**
+   * Пускане на влачена клетка според зоната (§8.13): дясната трета я прави
+   * дете, горната/долната част - брат над/под целевата.
+   */
+  function applyDrop(sourceId: string, targetId: string, zone: DropZone) {
+    const target = nodes[targetId];
+    if (!target) return;
+    const targetParentId = target.parent;
+
+    // Коренът няма братя - върху него винаги става дете.
+    if (zone === "child" || targetParentId === null) {
+      const result = moveNode(doc, sourceId, targetId, null, null, LOCAL_ORIGIN);
+      if (!result.ok) console.warn("Местенето е отказано:", result.reason);
+      return;
+    }
+
+    const siblings = getChildren(doc, targetParentId).filter((s) => s.id !== sourceId);
+    const idx = siblings.findIndex((s) => s.id === targetId);
+    const beforeOrder = zone === "before" ? (siblings[idx - 1]?.order ?? null) : target.order;
+    const afterOrder = zone === "before" ? target.order : (siblings[idx + 1]?.order ?? null);
+    const result = moveNode(doc, sourceId, targetParentId, beforeOrder, afterOrder, LOCAL_ORIGIN);
+    if (!result.ok) {
+      console.warn("Местенето е отказано:", result.reason);
+      return;
+    }
+    // Брат на пряко дете на корена трябва да остане на страната, в която е
+    // пуснат - иначе `pickBalancedSide` може да го метне на другата страна.
+    if (targetParentId === ROOT_ID && target.side) setNodeSide(doc, sourceId, target.side, LOCAL_ORIGIN);
   }
 
   // Клик върху възел: обикновено избира, но докато сме "въоръжени" за връзка
@@ -600,6 +658,7 @@ export function MindMapCanvas({
             selected={n.id === selectedId}
             editing={n.id === editingId}
             isDropTarget={n.id === dropTarget}
+            dropZone={n.id === dropTarget ? dropZone : null}
             isDragging={n.id === dragId}
             isMatch={matchSet.has(n.id)}
             isActiveMatch={search.activeMatch === n.id}
@@ -615,7 +674,8 @@ export function MindMapCanvas({
             onToggleCollapse={() => toggleCollapsed(doc, n.id, LOCAL_ORIGIN)}
             onPointerDown={(e) => onNodePointerDown(e, n.id)}
             onPointerEnter={() => onNodePointerEnter(n.id)}
-            onPointerUp={onNodePointerUp}
+            onPointerMove={(e) => onNodePointerMove(e, n.id)}
+            onPointerUp={(e) => onNodePointerUp(e, n.id)}
           />
         ))}
       </div>
@@ -630,6 +690,7 @@ function NodeBox({
   selected,
   editing,
   isDropTarget,
+  dropZone,
   isDragging,
   isMatch,
   isActiveMatch,
@@ -642,6 +703,7 @@ function NodeBox({
   onToggleCollapse,
   onPointerDown,
   onPointerEnter,
+  onPointerMove,
   onPointerUp,
 }: {
   layoutNode: LayoutNode;
@@ -649,6 +711,8 @@ function NodeBox({
   selected: boolean;
   editing: boolean;
   isDropTarget: boolean;
+  /** Кое ще стане при пускане тук - за визуалната подсказка (§8.13). */
+  dropZone: DropZone | null;
   isDragging: boolean;
   isMatch: boolean;
   isActiveMatch: boolean;
@@ -661,7 +725,8 @@ function NodeBox({
   onToggleCollapse: () => void;
   onPointerDown: (e: React.PointerEvent) => void;
   onPointerEnter: () => void;
-  onPointerUp: () => void;
+  onPointerMove: (e: React.PointerEvent) => void;
+  onPointerUp: (e: React.PointerEvent) => void;
 }) {
   const t = useT();
   const [draft, setDraft] = useState(layoutNode.text);
@@ -684,6 +749,7 @@ function NodeBox({
         "mindmap-node",
         selected && "selected",
         isDropTarget && "drop-target",
+        isDropTarget && dropZone && `drop-${dropZone}`,
         isDragging && "dragging",
         isMatch && "search-match",
         isActiveMatch && "search-active",
@@ -709,6 +775,7 @@ function NodeBox({
       onDoubleClick={onStartEdit}
       onPointerDown={onPointerDown}
       onPointerEnter={onPointerEnter}
+      onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
     >
       {presenceUsers.length > 0 && (

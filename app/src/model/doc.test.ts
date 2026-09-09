@@ -25,6 +25,7 @@ import {
   setBackgroundColor,
   setCloud,
   setLink,
+  setNodeSide,
   setTextColor,
   toggleBold,
   toggleIcon,
@@ -286,5 +287,23 @@ describe("връзки между произволни клетки (§8.2)", ()
     addLink(doc, a, b);
     deleteNodeSubtree(doc, b);
     expect(getAllLinks(doc)).toEqual([]);
+  });
+});
+
+describe("страна на клетките на първо ниво (§8.13)", () => {
+  it("setNodeSide прехвърля пряко дете на корена от другата страна", () => {
+    const doc = createMindMapDoc();
+    const a = addChild(doc, ROOT_ID, "A");
+    const sideBefore = getChildren(doc, ROOT_ID)[0].side;
+    setNodeSide(doc, a, sideBefore === "left" ? "right" : "left");
+    expect(getChildren(doc, ROOT_ID)[0].side).not.toBe(sideBefore);
+  });
+
+  it("setNodeSide не пипа възли по-навътре в дървото (там страна няма смисъл)", () => {
+    const doc = createMindMapDoc();
+    const a = addChild(doc, ROOT_ID, "A");
+    const b = addChild(doc, a, "Дете");
+    setNodeSide(doc, b, "left");
+    expect(getChildren(doc, a)[0].side).toBeNull();
   });
 });

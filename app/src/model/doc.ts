@@ -442,6 +442,18 @@ export function ensureStyleMigrated(doc: Y.Doc, origin?: unknown): boolean {
   return migrated;
 }
 
+/**
+ * Прехвърля пряко дете на корена от едната страна на другата, без да го мести
+ * в дървото (§8.13). Отделно от `moveNode`, защото той нарочно ПАЗИ страната
+ * при непроменен родител (§8.5) - тук точно смяната на страната е целта.
+ * За по-навътрешни възли страната няма смисъл и извикването се пренебрегва.
+ */
+export function setNodeSide(doc: Y.Doc, nodeId: string, side: Side, origin?: unknown): void {
+  const n = getNodesMap(doc).get(nodeId);
+  if (!n || (n.get("parent") as string | null) !== ROOT_ID) return;
+  doc.transact(() => n.set("side", side), origin);
+}
+
 export function toggleCollapsed(doc: Y.Doc, nodeId: string, origin?: unknown): void {
   const nodes = getNodesMap(doc);
   const n = nodes.get(nodeId);
