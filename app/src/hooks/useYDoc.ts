@@ -13,7 +13,7 @@ import {
 } from "../model/doc";
 import type { LinkInfo, NodeSnapshot } from "../model/doc";
 import { attachLocalPersistence } from "../sync/persistence";
-import { AutoSnapshotter } from "../history/snapshots";
+import { AutoSnapshotter, purgeLegacyBinarySnapshots } from "../history/snapshots";
 import {
   LocalOnlyProvider,
   acquireProvider,
@@ -81,6 +81,9 @@ export function useYDoc(roomId: string): YDocState {
       reattachOrphans(doc, "auto-reattach");
       ensureRootSides(doc, "assign-sides");
       ensureStyleMigrated(doc, "migrate-style");
+      // Изчиства раздутите снимки от стария формат (§8.11) - те идват със
+      // синхронизацията, затова проверката е тук, а не само при монтиране.
+      purgeLegacyBinarySnapshots(doc);
       const snapshots = getAllSnapshots(doc);
       setNodes(snapshots);
       setLinks(getAllLinks(doc));
@@ -166,7 +169,7 @@ export function useYDoc(roomId: string): YDocState {
       stylesArray.unobserveDeep(onUpdate);
       linksMap.unobserveDeep(onUpdate);
       if (heartbeat) clearInterval(heartbeat);
-      persistence.destroy();
+      persistence?.destroy();
       snapshotter.stop();
       if (acquired) releaseProvider(roomId);
     };

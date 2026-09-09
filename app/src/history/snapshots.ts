@@ -1,8 +1,17 @@
-// История на промените върху Yjs — вж. PLAN.md §5.
-// Не разчитаме на функция от платен план: пазим снимки на състоянието
-// на самия документ (encodeStateAsUpdate), кодирани в base64.
+// История на промените върху Yjs — вж. PLAN.md §5 и §8.11.
+// Не разчитаме на функция от платен план: пазим снимки на съдържанието
+// в самия документ, за да са споделени между участниците.
+//
+// ВАЖНО (§8.11): снимката е ЛОГИЧЕСКО дърво (JSON), не `encodeStateAsUpdate`.
+// Първоначално се пазеше двоичното състояние на целия документ, записано
+// ВЪТРЕ в същия документ - тоест всяка нова снимка съдържаше всички предишни.
+// Това удвояваше документа при всяка снимка (измерено: 3 KB → 210 MB за 13
+// снимки) и в крайна сметка сриваше браузъра при зареждане ("Aw, Snap!").
 
 import * as Y from "yjs";
+import { docToTree, replaceDocWithTree } from "../importExport/freemind";
+import type { PlainNode } from "../importExport/freemind";
+import { createMindMapDoc } from "../model/doc";
 
 export interface VersionEntry {
   id: string;
@@ -10,17 +19,19 @@ export interface VersionEntry {
   author: string;
   label: string | null; // null = автоматична снимка, низ = именувана
   nodeCount: number;
-  update: string; // base64 на Y.encodeStateAsUpdate
+  /** Логическо дърво - текущият формат (§8.11). */
+  tree?: PlainNode;
+  /**
+   * СТАРИЯТ формат: base64 на `encodeStateAsUpdate` на целия документ.
+   * Вече не се пише - чете се само за да могат стари записи да се върнат,
+   * и се изчиства от `purgeLegacyBinarySnapshots`.
+   */
+  update?: string;
 }
 
 const MAX_AUTO_SNAPSHOTS = 50;
 
-function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
-}
-
+/** Само за четене на стари записи (§8.11) - нови вече не се пишат така. */
 function base64ToBytes(b64: string): Uint8Array {
   const binary = atob(b64);
   const bytes = new Uint8Array(binary.length);
@@ -37,7 +48,6 @@ export function takeSnapshot(
   author: string,
   label: string | null,
 ): VersionEntry {
-  const update = Y.encodeStateAsUpdate(doc);
   const nodes = doc.getMap("nodes");
   const entry: VersionEntry = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -45,7 +55,7 @@ export function takeSnapshot(
     author,
     label,
     nodeCount: nodes.size,
-    update: bytesToBase64(update),
+    tree: docToTree(doc),
   };
 
   const versions = getVersionsMap(doc);
@@ -90,8 +100,13 @@ export function nameVersion(doc: Y.Doc, id: string, label: string): void {
  * без да пипа текущия документ (вж. PLAN.md §5).
  */
 export function loadSnapshotAsDoc(entry: VersionEntry): Y.Doc {
+  if (entry.tree) {
+    const doc = createMindMapDoc();
+    replaceDocWithTree(doc, entry.tree, "snapshot-preview");
+    return doc;
+  }
   const doc = new Y.Doc();
-  Y.applyUpdate(doc, base64ToBytes(entry.update), "snapshot-preview");
+  if (entry.update) Y.applyUpdate(doc, base64ToBytes(entry.update), "snapshot-preview");
   return doc;
 }
 
@@ -100,7 +115,33 @@ export function loadSnapshotAsDoc(entry: VersionEntry): Y.Doc {
  * съществуващата история) — възстановяването е обратимо действие.
  */
 export function restoreSnapshot(doc: Y.Doc, entry: VersionEntry): void {
-  Y.applyUpdate(doc, base64ToBytes(entry.update), "snapshot-restore");
+  if (entry.tree) {
+    replaceDocWithTree(doc, entry.tree, "snapshot-restore");
+    return;
+  }
+  // стар запис (§8.11) - оставено само за съвместимост
+  if (entry.update) Y.applyUpdate(doc, base64ToBytes(entry.update), "snapshot-restore");
+}
+
+/**
+ * Изчиства записите от стария формат (§8.11). Те не могат да се смалят на
+ * място (изтритото в Yjs остава в историята на документа), но докато стоят,
+ * всяко зареждане държи по десетки/стотици мегабайта в паметта - точно това
+ * сриваше браузъра. Съдържанието на картата не се пипа, губи се само
+ * възможността да се върне онази стара снимка.
+ * Връща колко записа е махнал.
+ */
+export function purgeLegacyBinarySnapshots(doc: Y.Doc): number {
+  const versions = getVersionsMap(doc);
+  const legacyIds: string[] = [];
+  versions.forEach((entry, id) => {
+    if (entry && typeof entry === "object" && "update" in entry && entry.update) legacyIds.push(id);
+  });
+  if (legacyIds.length === 0) return 0;
+  doc.transact(() => {
+    for (const id of legacyIds) versions.delete(id);
+  }, "snapshot-purge-legacy");
+  return legacyIds.length;
 }
 
 /** Проста автоматична подкана за снимка: на всеки N промени или интервал от време. */

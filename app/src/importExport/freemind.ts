@@ -79,6 +79,41 @@ function nodeToXml(doc: Y.Doc, node: NodeSnapshot, depth: number, linksByFrom: M
   return `${indent}<node ${attrs.join(" ")}>\n${inner.join("\n")}\n${indent}</node>`;
 }
 
+/**
+ * Целият документ като просто дърво (същата структура, която ползва вносът).
+ * Ползва се и от историята (§8.11): снимка от логическото дърво е няколко
+ * килобайта и НЕ съдържа другите снимки, за разлика от `encodeStateAsUpdate`.
+ */
+export function docToTree(doc: Y.Doc): PlainNode {
+  const nodes = getNodesMap(doc);
+  const rootMap = nodes.get(ROOT_ID);
+  if (!rootMap) return { text: "", children: [] };
+
+  const linksByFrom = new Map<string, string[]>();
+  for (const link of getAllLinks(doc)) {
+    if (!linksByFrom.has(link.from)) linksByFrom.set(link.from, []);
+    linksByFrom.get(link.from)!.push(link.to);
+  }
+
+  function build(snap: NodeSnapshot): PlainNode {
+    const outgoing = linksByFrom.get(snap.id);
+    return {
+      text: snap.text,
+      note: snap.note || undefined,
+      collapsed: snap.collapsed,
+      side: snap.side,
+      style: snap.style,
+      // ID-тата се пазят, за да може `replaceDocWithTree` да пренасочи
+      // стрелките към новите id-та при връщане на снимката
+      fileId: snap.id,
+      arrowlinks: outgoing?.length ? outgoing : undefined,
+      children: getChildren(doc, snap.id).map(build),
+    };
+  }
+
+  return build(toSnapshot(doc, ROOT_ID, rootMap));
+}
+
 /** Целият документ като FreeMind .mm файл. */
 export function exportToFreeMind(doc: Y.Doc): string {
   const nodes = getNodesMap(doc);
