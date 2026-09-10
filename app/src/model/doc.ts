@@ -508,6 +508,65 @@ export function moveNode(
 }
 
 /**
+ * Дублира клетка заедно с цялото ѝ поддърво (§8.15) - нов клон, поставен
+ * веднага след оригинала при същия родител, на същата страна. Връща id-то
+ * на новия връх, или `null` за корена (той е един, не се дублира) или ако
+ * възелът вече не съществува.
+ */
+export function duplicateSubtree(doc: Y.Doc, nodeId: string, origin?: unknown): string | null {
+  if (nodeId === ROOT_ID) return null;
+  const nodes = getNodesMap(doc);
+  const original = nodes.get(nodeId);
+  if (!original) return null;
+  const parentId = original.get("parent") as string | null;
+  if (parentId === null) return null;
+
+  let newTopId = "";
+  doc.transact(() => {
+    const siblings = getChildren(doc, parentId);
+    const idx = siblings.findIndex((s) => s.id === nodeId);
+    const afterOrder = siblings[idx + 1]?.order ?? null;
+    const topOrder = generateKeyBetween(siblings[idx]?.order ?? null, afterOrder);
+
+    function clone(sourceId: string, newParentId: string, newOrder: string, isTop: boolean): string {
+      const source = nodes.get(sourceId)!;
+      const newId = nanoid(10);
+      const n = new Y.Map<unknown>();
+      n.set("parent", newParentId);
+      n.set("order", newOrder);
+      const srcText = source.get("text") as Y.Text;
+      const t = new Y.Text();
+      if (srcText.length) t.insert(0, srcText.toString());
+      n.set("text", t);
+      const srcNote = source.get("note") as Y.Text | undefined;
+      const note = new Y.Text();
+      if (srcNote && srcNote.length) note.insert(0, srcNote.toString());
+      n.set("note", note);
+      n.set("collapsed", Boolean(source.get("collapsed")));
+      // Страна има смисъл само за преки деца на корена - копираме я само
+      // на върха на клона (пуска се до оригинала), не по-навътре.
+      n.set("side", isTop ? (source.get("side") as Side) : null);
+      nodes.set(newId, n);
+
+      const style = readStyle(doc, sourceId);
+      if (Object.keys(style).length) setNodeStyle(doc, newId, style, origin);
+
+      let childPrev: string | null = null;
+      for (const child of getChildren(doc, sourceId)) {
+        const childOrder = generateKeyBetween(childPrev, null);
+        childPrev = childOrder;
+        clone(child.id, newId, childOrder, false);
+      }
+      return newId;
+    }
+
+    newTopId = clone(nodeId, parentId, topOrder, true);
+  }, origin);
+
+  return newTopId;
+}
+
+/**
  * Защитна проверка при зареждане/отдалечена промяна: намира възли, чийто път
  * до корена е прекъснат (изтрит предшественик или откъснат цикъл), и ги
  * закача обратно към корена. Връща списък презакачени id-та (за известие в UI).

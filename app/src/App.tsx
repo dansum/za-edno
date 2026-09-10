@@ -8,6 +8,8 @@ import { HistoryPanel } from "./components/HistoryPanel";
 import { FileMenu } from "./components/FileMenu";
 import { ViewMenu } from "./components/ViewMenu";
 import { HelpPanel } from "./components/HelpPanel";
+import { OutlinePanel } from "./components/OutlinePanel";
+import { ToastHost } from "./components/ToastHost";
 import { SearchBar, EMPTY_SEARCH, type SearchState } from "./components/SearchBar";
 import { LanguageProvider, useLanguage } from "./i18n/useLanguage";
 import { LANGUAGES } from "./i18n/translations";
@@ -40,6 +42,8 @@ function AppShell() {
   const [selectedId, setSelectedId] = useState(ROOT_ID);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [outlineOpen, setOutlineOpen] = useState(false);
+  const nodeCount = Object.keys(nodes).length;
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState<SearchState>(EMPTY_SEARCH);
   const [linkCopied, setLinkCopied] = useState(false);
@@ -85,6 +89,7 @@ function AppShell() {
           </button>
           <button onClick={openSearch}>{t.search}</button>
           <button onClick={() => setHistoryOpen(true)}>{t.history}</button>
+          <button onClick={() => setOutlineOpen(true)}>{t.outline}</button>
           <FileMenu doc={doc} onImported={() => setSelectedId(ROOT_ID)} />
           <ViewMenu canvasRef={canvasRef} />
           <button onClick={() => setHelpOpen(true)}>{t.help}</button>
@@ -94,6 +99,11 @@ function AppShell() {
         </div>
 
         <div className="app-header-right">
+          {nodeCount > 100 && (
+            <span className="node-count-warning" title={t.nodeCountWarning(nodeCount)}>
+              ⚠ {nodeCount}
+            </span>
+          )}
           <select
             className="language-select"
             aria-label={t.language}
@@ -160,6 +170,23 @@ function AppShell() {
           </div>
         </div>
       )}
+
+      {outlineOpen && (
+        <div className="modal-overlay" onClick={() => setOutlineOpen(false)}>
+          <div onClick={(e) => e.stopPropagation()}>
+            <OutlinePanel
+              doc={doc}
+              onClose={() => setOutlineOpen(false)}
+              onJump={(nodeId) => {
+                jumpToNode(nodeId);
+                setOutlineOpen(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      <ToastHost />
     </div>
   );
 }

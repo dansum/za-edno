@@ -7,11 +7,14 @@ import {
   addSiblingAfter,
   deleteLink,
   deleteNodeSubtree,
+  duplicateSubtree,
   getChildren,
   isSafeLinkUrl,
   moveNode,
+  setBackgroundColor,
   setNodeSide,
   setNodeText,
+  setTextColor,
   toggleBold,
   toggleCollapsed,
   toggleIcon,
@@ -22,6 +25,7 @@ import type { LinkInfo, NodeSnapshot } from "../model/doc";
 import { computeLayout } from "../layout/treeLayout";
 import type { LayoutNode } from "../layout/treeLayout";
 import { computeClouds, computeLinkPaths } from "../layout/overlays";
+import { BACKGROUND_COLOR_PALETTE, TEXT_COLOR_PALETTE } from "../model/color";
 import { dropZoneAt } from "../layout/dropZone";
 import type { DropZone } from "../layout/dropZone";
 import type { PresenceUser } from "./PresenceBar";
@@ -32,6 +36,7 @@ import { ICON_CATALOG, iconIdForDigitCode } from "../model/icons";
 import { FormatToolbar } from "./FormatToolbar";
 import { useUndoRedoState } from "../hooks/useUndo";
 import { PAN_STEP_PX } from "../panStep";
+import { notify } from "../toast";
 
 const LOCAL_ORIGIN = Symbol("local-edit");
 export { LOCAL_ORIGIN };
@@ -75,6 +80,7 @@ export function MindMapCanvas({
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [dropZone, setDropZone] = useState<DropZone>("child");
+  const [multiColorPicker, setMultiColorPicker] = useState<"text" | "background" | null>(null);
   // Режим "свързване" (§8.2): въоръжен от бутона 🔗 в лентата за форматиране;
   // следващият кликнат възел довършва стрелката от `linkingFrom` към него.
   const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
@@ -84,6 +90,18 @@ export function MindMapCanvas({
   // при истинска смяна на избрания възел (клик върху възел, търсене, навигация).
   const [canvasFocused, setCanvasFocused] = useState(false);
   useEffect(() => setCanvasFocused(false), [selectedId]);
+  // Множествен избор (§8.21): Ctrl/Cmd/Shift+клик добавя/маха възел от
+  // множеството - ДОПЪЛНИТЕЛНО към обикновения (единичен) избор `selectedId`,
+  // който продължава да определя коя клетка виждат лентата за форматиране и
+  // редакцията. Обикновен клик изчиства множеството.
+  const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
+  // Пълното множество, върху което действат групови действия (изтрий/
+  // премести/оцвети) - винаги включва и текущо избраната клетка.
+  const effectiveSelection = useMemo(() => {
+    const s = new Set(multiSelected);
+    s.add(selectedId);
+    return s;
+  }, [multiSelected, selectedId]);
 
   const matchSet = useMemo(() => new Set(search.matches), [search.matches]);
 
@@ -274,9 +292,16 @@ export function MindMapCanvas({
         e.preventDefault();
         setEditingId(selectedId);
       } else if (e.key === "Delete" || e.key === "Backspace") {
-        if (selectedId === ROOT_ID) return;
         e.preventDefault();
-        deleteSelected(selectedId);
+        // Групово изтриване (§8.21), ако има повече от една избрана клетка.
+        const targets = [...effectiveSelection].filter((id) => id !== ROOT_ID);
+        if (targets.length > 1) {
+          for (const id of targets) deleteNodeSubtree(doc, id, LOCAL_ORIGIN);
+          setMultiSelected(new Set());
+          onSelect(ROOT_ID);
+        } else if (selectedId !== ROOT_ID) {
+          deleteSelected(selectedId);
+        }
       } else if (e.key === " ") {
         e.preventDefault();
         toggleCollapsed(doc, selectedId, LOCAL_ORIGIN);
@@ -286,8 +311,14 @@ export function MindMapCanvas({
         (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight")
       ) {
         // Ctrl+посока мести възела в дървото (§8.4), обикновена посока само избира.
+        // При групов избор (§8.21) местим всяка избрана клетка поотделно,
+        // всяка в своя собствен контекст (родител/страна).
         e.preventDefault();
-        moveInDirection(e.key);
+        if (multiSelected.size > 0) {
+          for (const id of effectiveSelection) moveInDirection(e.key, id);
+        } else {
+          moveInDirection(e.key, selectedId);
+        }
       } else if (e.key === "ArrowUp" || e.key === "ArrowDown" || e.key === "ArrowLeft" || e.key === "ArrowRight") {
         e.preventDefault();
         navigate(e.key);
@@ -309,20 +340,20 @@ export function MindMapCanvas({
      * (като дете на съседен брат) - посоката е спрямо страната му, огледално
      * на обикновената навигация със стрелки по-долу.
      */
-    function moveInDirection(key: string) {
-      if (selectedId === ROOT_ID) return;
-      const current = nodes[selectedId];
+    function moveInDirection(key: string, nodeId: string) {
+      if (nodeId === ROOT_ID) return;
+      const current = nodes[nodeId];
       const parentId = current?.parent;
       if (!current || !parentId) return;
 
       if (key === "ArrowUp" || key === "ArrowDown") {
         const siblings = getChildren(doc, parentId);
-        const idx = siblings.findIndex((s) => s.id === selectedId);
+        const idx = siblings.findIndex((s) => s.id === nodeId);
         const swapIdx = key === "ArrowUp" ? idx - 1 : idx + 1;
         if (swapIdx < 0 || swapIdx >= siblings.length) return;
         const beforeOrder = key === "ArrowUp" ? (siblings[swapIdx - 1]?.order ?? null) : siblings[swapIdx].order;
         const afterOrder = key === "ArrowUp" ? siblings[swapIdx].order : (siblings[swapIdx + 1]?.order ?? null);
-        moveNode(doc, selectedId, parentId, beforeOrder, afterOrder, LOCAL_ORIGIN);
+        moveNode(doc, nodeId, parentId, beforeOrder, afterOrder, LOCAL_ORIGIN);
         return;
       }
 
@@ -331,7 +362,7 @@ export function MindMapCanvas({
       // ОФОРМЛЕНИЕТО, не от модела: моделът пази страна само за преките деца
       // на корена, а по-навътре я наследяват при рисуването - без това
       // клетките в лявото поддърво се местеха в обратната посока.
-      const isLeftSide = (layout?.nodes.find((n) => n.id === selectedId)?.side ?? current.side) === "left";
+      const isLeftSide = (layout?.nodes.find((n) => n.id === nodeId)?.side ?? current.side) === "left";
       const towardRoot = isLeftSide ? key === "ArrowRight" : key === "ArrowLeft";
 
       if (parentId === ROOT_ID) {
@@ -340,13 +371,13 @@ export function MindMapCanvas({
         // брат, но само от СЪЩАТА страна: иначе лява клетка кацаше под
         // клетка отдясно, което на екрана изглежда като скок през корена.
         if (towardRoot) {
-          setNodeSide(doc, selectedId, isLeftSide ? "right" : "left", LOCAL_ORIGIN);
+          setNodeSide(doc, nodeId, isLeftSide ? "right" : "left", LOCAL_ORIGIN);
           return;
         }
         const sameSide = getChildren(doc, ROOT_ID).filter((s) => (s.side === "left") === isLeftSide);
-        const idx = sameSide.findIndex((s) => s.id === selectedId);
+        const idx = sameSide.findIndex((s) => s.id === nodeId);
         const newParent = idx > 0 ? sameSide[idx - 1] : sameSide[idx + 1];
-        if (newParent) moveNode(doc, selectedId, newParent.id, null, null, LOCAL_ORIGIN);
+        if (newParent) moveNode(doc, nodeId, newParent.id, null, null, LOCAL_ORIGIN);
         return;
       }
 
@@ -357,14 +388,14 @@ export function MindMapCanvas({
         if (!grandParentId) return;
         const uncles = getChildren(doc, grandParentId);
         const parentIdx = uncles.findIndex((u) => u.id === parentId);
-        moveNode(doc, selectedId, grandParentId, parentNode.order, uncles[parentIdx + 1]?.order ?? null, LOCAL_ORIGIN);
+        moveNode(doc, nodeId, grandParentId, parentNode.order, uncles[parentIdx + 1]?.order ?? null, LOCAL_ORIGIN);
       } else {
         // едно ниво навътре: става дете на съседния брат (предишния, ако има)
         const siblings = getChildren(doc, parentId);
-        const idx = siblings.findIndex((s) => s.id === selectedId);
+        const idx = siblings.findIndex((s) => s.id === nodeId);
         const newParent = idx > 0 ? siblings[idx - 1] : siblings[idx + 1];
         if (!newParent) return;
-        moveNode(doc, selectedId, newParent.id, null, null, LOCAL_ORIGIN);
+        moveNode(doc, nodeId, newParent.id, null, null, LOCAL_ORIGIN);
       }
     }
 
@@ -404,7 +435,21 @@ export function MindMapCanvas({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [doc, selectedId, editingId, layout, nodes, onSelect, undoManager, onRequestSearch, linkingFrom, selectedLinkId, canvasFocused]);
+  }, [
+    doc,
+    selectedId,
+    editingId,
+    layout,
+    nodes,
+    onSelect,
+    undoManager,
+    onRequestSearch,
+    linkingFrom,
+    selectedLinkId,
+    canvasFocused,
+    multiSelected,
+    effectiveSelection,
+  ]);
 
   // ---- панорама и мащаб на платното ----
   function onWheel(e: React.WheelEvent) {
@@ -413,6 +458,32 @@ export function MindMapCanvas({
       const delta = -e.deltaY * 0.001;
       setZoom((z) => Math.min(2, Math.max(0.3, z + delta)));
     }
+  }
+
+  // Бутони за мащаб на екрана (§8.19) - Ctrl+колело работи, но не е очевидно
+  // без да се спомене; тук е видимо и работи с тап на телефон.
+  const ZOOM_STEP = 0.1;
+  function zoomIn() {
+    setZoom((z) => Math.min(2, +(z + ZOOM_STEP).toFixed(2)));
+  }
+  function zoomOut() {
+    setZoom((z) => Math.max(0.3, +(z - ZOOM_STEP).toFixed(2)));
+  }
+  /** Смалява/уголемява и центрира така, че цялата карта да се вижда наведнъж. */
+  function fitToScreen() {
+    const viewport = containerRef.current;
+    if (!viewport || !layout) return;
+    const rect = viewport.getBoundingClientRect();
+    const PAD = 60;
+    const scale = Math.max(
+      0.3,
+      Math.min(2, (rect.width - PAD) / layout.width, (rect.height - PAD) / layout.height, 1),
+    );
+    setZoom(scale);
+    setPan({
+      x: rect.width / 2 - rect.width * 0.4 - (layout.width / 2) * scale,
+      y: rect.height / 2 - rect.height * 0.4 - (layout.height / 2) * scale,
+    });
   }
 
   const panState = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
@@ -544,7 +615,7 @@ export function MindMapCanvas({
     // Коренът няма братя - върху него винаги става дете.
     if (zone === "child" || targetParentId === null) {
       const result = moveNode(doc, sourceId, targetId, null, null, LOCAL_ORIGIN);
-      if (!result.ok) console.warn("Местенето е отказано:", result.reason);
+      if (!result.ok) notify(t.moveRejected);
       return;
     }
 
@@ -554,7 +625,7 @@ export function MindMapCanvas({
     const afterOrder = zone === "before" ? target.order : (siblings[idx + 1]?.order ?? null);
     const result = moveNode(doc, sourceId, targetParentId, beforeOrder, afterOrder, LOCAL_ORIGIN);
     if (!result.ok) {
-      console.warn("Местенето е отказано:", result.reason);
+      notify(t.moveRejected);
       return;
     }
     // Брат на пряко дете на корена трябва да остане на страната, в която е
@@ -564,7 +635,7 @@ export function MindMapCanvas({
 
   // Клик върху възел: обикновено избира, но докато сме "въоръжени" за връзка
   // (§8.2) вместо това довършва стрелката към кликнатия възел.
-  function onNodeClick(id: string) {
+  function onNodeClick(id: string, e: React.MouseEvent) {
     setCanvasFocused(false);
     if (linkingFrom) {
       if (linkingFrom !== id) addLink(doc, linkingFrom, id, LOCAL_ORIGIN);
@@ -572,6 +643,20 @@ export function MindMapCanvas({
       return;
     }
     setSelectedLinkId(null);
+    if ((e.ctrlKey || e.metaKey || e.shiftKey) && id !== ROOT_ID) {
+      // Множествен избор (§8.21): добавя/маха от множеството; кликнатата
+      // клетка става и новата "основна" (за лентата за форматиране/редакция).
+      setMultiSelected((cur) => {
+        const next = new Set(cur);
+        next.add(selectedId); // "поглъщаме" сегашния единичен избор в множеството
+        if (next.has(id)) next.delete(id);
+        else next.add(id);
+        return next;
+      });
+      onSelect(id);
+      return;
+    }
+    setMultiSelected(new Set());
     onSelect(id);
   }
 
@@ -598,8 +683,76 @@ export function MindMapCanvas({
           onAddChild={() => addChildToSelected(selectedNode.id)}
           onAddSibling={() => addSiblingToSelected(selectedNode.id)}
           onDelete={() => deleteSelected(selectedNode.id)}
+          onDuplicate={() => {
+            const newId = duplicateSubtree(doc, selectedNode.id, LOCAL_ORIGIN);
+            if (newId) onSelect(newId);
+          }}
           onToggleCollapse={() => toggleCollapsed(doc, selectedNode.id, LOCAL_ORIGIN)}
         />
+      )}
+      {multiSelected.size > 0 && (
+        <div className="multi-select-toolbar">
+          <span className="multi-select-count">{t.multiSelectCount(effectiveSelection.size)}</span>
+          <button
+            title={t.toolbarDelete}
+            onClick={() => {
+              for (const id of effectiveSelection) {
+                if (id !== ROOT_ID) deleteNodeSubtree(doc, id, LOCAL_ORIGIN);
+              }
+              setMultiSelected(new Set());
+              onSelect(ROOT_ID);
+            }}
+          >
+            🗑 {t.multiSelectDeleteAll}
+          </button>
+          <button
+            title={t.toolbarBold}
+            onClick={() => {
+              for (const id of effectiveSelection) if (id !== ROOT_ID) toggleBold(doc, id, LOCAL_ORIGIN);
+            }}
+          >
+            <strong>Ч</strong>
+          </button>
+          <button title={t.toolbarItalic} onClick={() => {
+            for (const id of effectiveSelection) if (id !== ROOT_ID) toggleItalic(doc, id, LOCAL_ORIGIN);
+          }}>
+            <em>К</em>
+          </button>
+          <div className="format-picker-wrap">
+            <button
+              title={t.toolbarTextColor}
+              onClick={() => setMultiColorPicker((cur) => (cur === "text" ? null : "text"))}
+            >
+              A
+            </button>
+            {multiColorPicker === "text" && (
+              <MultiColorPicker
+                palette={TEXT_COLOR_PALETTE}
+                onPick={(color) => {
+                  for (const id of effectiveSelection) if (id !== ROOT_ID) setTextColor(doc, id, color, LOCAL_ORIGIN);
+                  setMultiColorPicker(null);
+                }}
+              />
+            )}
+          </div>
+          <div className="format-picker-wrap">
+            <button
+              title={t.toolbarBackgroundColor}
+              onClick={() => setMultiColorPicker((cur) => (cur === "background" ? null : "background"))}
+            >
+              ▧
+            </button>
+            {multiColorPicker === "background" && (
+              <MultiColorPicker
+                palette={BACKGROUND_COLOR_PALETTE}
+                onPick={(color) => {
+                  for (const id of effectiveSelection) if (id !== ROOT_ID) setBackgroundColor(doc, id, color, LOCAL_ORIGIN);
+                  setMultiColorPicker(null);
+                }}
+              />
+            )}
+          </div>
+        </div>
       )}
       {linkingFrom && <div className="mindmap-linking-hint">{t.linkingHint}</div>}
       <div
@@ -608,6 +761,7 @@ export function MindMapCanvas({
         onWheel={onWheel}
         onPointerDown={(e) => {
           setSelectedLinkId(null);
+          setMultiSelected(new Set());
           onBackgroundPointerDown(e);
         }}
         onPointerMove={onBackgroundPointerMove}
@@ -689,7 +843,8 @@ export function MindMapCanvas({
             isActiveMatch={search.activeMatch === n.id}
             dimmed={search.dimOthers && search.matches.length > 0 && !matchSet.has(n.id)}
             presenceUsers={selectionByNode.get(n.id) ?? []}
-            onSelect={() => onNodeClick(n.id)}
+            onSelect={(e) => onNodeClick(n.id, e)}
+            multiSelected={multiSelected.has(n.id)}
             onStartEdit={() => setEditingId(n.id)}
             onCommitText={(text) => {
               setNodeText(doc, n.id, text, LOCAL_ORIGIN);
@@ -697,12 +852,24 @@ export function MindMapCanvas({
             }}
             onCancelEdit={() => setEditingId(null)}
             onToggleCollapse={() => toggleCollapsed(doc, n.id, LOCAL_ORIGIN)}
+            onSaveDraftAsNewSibling={(text) => addSiblingAfter(doc, n.id, text, LOCAL_ORIGIN)}
             onPointerDown={(e) => onNodePointerDown(e, n.id)}
             onPointerEnter={() => onNodePointerEnter(n.id)}
             onPointerMove={(e) => onNodePointerMove(e, n.id)}
             onPointerUp={(e) => onNodePointerUp(e, n.id)}
           />
         ))}
+      </div>
+      <div className="zoom-controls">
+        <button title={t.zoomOut} onClick={zoomOut}>
+          −
+        </button>
+        <button title={t.zoomFit} onClick={fitToScreen}>
+          ⤢
+        </button>
+        <button title={t.zoomIn} onClick={zoomIn}>
+          +
+        </button>
       </div>
       </div>
     </>
@@ -713,6 +880,7 @@ function NodeBox({
   layoutNode,
   snapshot,
   selected,
+  multiSelected,
   editing,
   isDropTarget,
   dropZone,
@@ -726,6 +894,7 @@ function NodeBox({
   onCommitText,
   onCancelEdit,
   onToggleCollapse,
+  onSaveDraftAsNewSibling,
   onPointerDown,
   onPointerEnter,
   onPointerMove,
@@ -734,6 +903,8 @@ function NodeBox({
   layoutNode: LayoutNode;
   snapshot: NodeSnapshot | undefined;
   selected: boolean;
+  /** Част от групов избор (§8.21), различна от основната selected клетка. */
+  multiSelected: boolean;
   editing: boolean;
   isDropTarget: boolean;
   /** Кое ще стане при пускане тук - за визуалната подсказка (§8.13). */
@@ -743,11 +914,13 @@ function NodeBox({
   isActiveMatch: boolean;
   dimmed: boolean;
   presenceUsers: PresenceUser[];
-  onSelect: () => void;
+  onSelect: (e: React.MouseEvent) => void;
   onStartEdit: () => void;
   onCommitText: (text: string) => void;
   onCancelEdit: () => void;
   onToggleCollapse: () => void;
+  /** При конфликт с чужда едновременна редакция (§8.22) - пази недовършеното като нов брат. */
+  onSaveDraftAsNewSibling: (text: string) => void;
   onPointerDown: (e: React.PointerEvent) => void;
   onPointerEnter: () => void;
   onPointerMove: (e: React.PointerEvent) => void;
@@ -756,10 +929,34 @@ function NodeBox({
   const t = useT();
   const [draft, setDraft] = useState(layoutNode.text);
   const boxRef = useRef<HTMLDivElement>(null);
+  // Конфликт при едновременна редакция (§8.22): преди мълчаливо се
+  // презаписваше черновата с чуждия текст, ако друг участник потвърди своя
+  // ред докато този все още пише - недовършеното писане просто изчезваше.
+  const [conflictText, setConflictText] = useState<string | null>(null);
+  const editStartTextRef = useRef(layoutNode.text);
+  const wasEditingRef = useRef(editing);
 
   useEffect(() => {
-    if (editing) setDraft(layoutNode.text);
+    const justStarted = editing && !wasEditingRef.current;
+    wasEditingRef.current = editing;
+    if (justStarted) {
+      editStartTextRef.current = layoutNode.text;
+      setDraft(layoutNode.text);
+      setConflictText(null);
+    }
   }, [editing, layoutNode.text]);
+
+  useEffect(() => {
+    if (!editing) return;
+    if (layoutNode.text === editStartTextRef.current) return; // няма чужда промяна
+    if (draft === editStartTextRef.current) {
+      // нищо свое не е написано - безопасно е да поемем новото
+      editStartTextRef.current = layoutNode.text;
+      setDraft(layoutNode.text);
+    } else {
+      setConflictText(layoutNode.text);
+    }
+  }, [layoutNode.text, editing, draft]);
 
   // Избраният възел получава и истински фокус в браузъра, за да го обяви
   // екранният четец и да се вижда при работа само с клавиатура.
@@ -773,6 +970,7 @@ function NodeBox({
       className={[
         "mindmap-node",
         selected && "selected",
+        multiSelected && "multi-selected",
         isDropTarget && "drop-target",
         isDropTarget && dropZone && `drop-${dropZone}`,
         isDragging && "dragging",
@@ -811,36 +1009,69 @@ function NodeBox({
         </div>
       )}
       {editing ? (
-        <textarea
-          autoFocus
-          className="node-edit-input"
-          rows={draft.split("\n").length}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && e.altKey) {
-              // Alt+Enter вмъква нов ред (§8.1) - оставяме си стандартното
-              // поведение на textarea за Enter, само спираме разпространението.
-              e.stopPropagation();
-            } else if (e.key === "Enter") {
-              e.preventDefault();
-              onCommitText(draft);
-              e.stopPropagation();
-            } else if (e.key === "Escape") {
-              e.preventDefault();
-              onCancelEdit();
-              e.stopPropagation();
-            } else if (!(e.ctrlKey || e.metaKey || e.altKey)) {
-              // обикновено писане - спираме разпространението, за да не тръгне
-              // и към клавишите на платното (стрелки, интервал и т.н.)
-              e.stopPropagation();
-            }
-            // комбинации с Ctrl/Alt/Cmd (удебелено, наклонено, цвят, икони) НЕ се
-            // спират тук - продължават към прозоречния слушател, за да работят и
-            // по време на редакция (вж. PLAN.md §7.1)
-          }}
-          onBlur={() => onCommitText(draft)}
-        />
+        <>
+          <textarea
+            autoFocus
+            className="node-edit-input"
+            rows={draft.split("\n").length}
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.altKey) {
+                // Alt+Enter вмъква нов ред (§8.1) - оставяме си стандартното
+                // поведение на textarea за Enter, само спираме разпространението.
+                e.stopPropagation();
+              } else if (e.key === "Enter") {
+                e.preventDefault();
+                onCommitText(draft);
+                e.stopPropagation();
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                onCancelEdit();
+                e.stopPropagation();
+              } else if (!(e.ctrlKey || e.metaKey || e.altKey)) {
+                // обикновено писане - спираме разпространението, за да не тръгне
+                // и към клавишите на платното (стрелки, интервал и т.н.)
+                e.stopPropagation();
+              }
+              // комбинации с Ctrl/Alt/Cmd (удебелено, наклонено, цвят, икони) НЕ се
+              // спират тук - продължават към прозоречния слушател, за да работят и
+              // по време на редакция (вж. PLAN.md §7.1)
+            }}
+            onBlur={() => {
+              // При конфликт (§8.22) НЕ комитваме автоматично на blur - бутоните
+              // на банера по-долу решават изрично какво да стане (иначе клик върху
+              // тях първо размазва черновата върху чуждия текст, преди да са
+              // хванали избора на потребителя).
+              if (conflictText === null) onCommitText(draft);
+            }}
+          />
+          {conflictText !== null && (
+            <div className="edit-conflict-banner">
+              <span>{t.editConflictMessage}</span>
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  onSaveDraftAsNewSibling(draft);
+                  setConflictText(null);
+                  onCancelEdit();
+                }}
+              >
+                {t.editConflictKeepMine}
+              </button>
+              <button
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => {
+                  editStartTextRef.current = conflictText;
+                  setDraft(conflictText);
+                  setConflictText(null);
+                }}
+              >
+                {t.editConflictTakeTheirs}
+              </button>
+            </div>
+          )}
+        </>
       ) : (
         <span
           className="node-text"
@@ -884,6 +1115,27 @@ function NodeBox({
           {layoutNode.collapsed ? "+" : "−"}
         </button>
       )}
+    </div>
+  );
+}
+
+/** Малка палитра за групово оцветяване (§8.21) - без "текущ цвят" (клетките може да имат различни). */
+function MultiColorPicker({ palette, onPick }: { palette: string[]; onPick: (color: string | null) => void }) {
+  const t = useT();
+  return (
+    <div className="color-picker">
+      <button className="color-swatch color-swatch-default" title={t.toolbarDefault} onClick={() => onPick(null)}>
+        ✕
+      </button>
+      {palette.map((color) => (
+        <button
+          key={color}
+          className="color-swatch"
+          style={{ backgroundColor: color }}
+          onClick={() => onPick(color)}
+          title={color}
+        />
+      ))}
     </div>
   );
 }

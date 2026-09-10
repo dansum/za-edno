@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import * as Y from "yjs";
 import {
+  docToTree,
   downloadTextFile,
   exportToFreeMind,
   exportToMarkdown,
@@ -11,6 +12,10 @@ import {
 import { downloadBlob, exportToPngBlob, exportToSvg } from "../importExport/imageExport";
 import { getMeta } from "../model/doc";
 import { useT } from "../i18n/useLanguage";
+import { notify } from "../toast";
+import { TEMPLATES } from "../templates";
+import { generateRoomId } from "../roomId";
+import { pendingCopyKey } from "../pendingCopy";
 
 function safeFileName(doc: Y.Doc): string {
   const title = (getMeta(doc).get("title") as string) || "za-edno";
@@ -35,8 +40,31 @@ export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => vo
       onImported();
       setOpen(false);
     } catch (err) {
-      setError(err instanceof Error ? err.message : t.importFailed);
+      const message = err instanceof Error ? err.message : t.importFailed;
+      setError(message);
+      notify(message);
     }
+  }
+
+  function applyTemplate(template: (typeof TEMPLATES)[number]) {
+    const count = countNodes(template.tree);
+    const ok = window.confirm(t.importConfirm(t[template.labelKey], count));
+    if (!ok) return;
+    replaceDocWithTree(doc, template.tree);
+    onImported();
+    setOpen(false);
+  }
+
+  function saveCopyToNewRoom() {
+    const newRoomId = generateRoomId();
+    try {
+      localStorage.setItem(pendingCopyKey(newRoomId), JSON.stringify(docToTree(doc)));
+    } catch {
+      notify(t.saveCopyFailed);
+      return;
+    }
+    window.open(`index.html?room=${newRoomId}`, "_blank");
+    setOpen(false);
   }
 
   return (
@@ -78,14 +106,25 @@ export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => vo
           </button>
           <button
             onClick={async () => {
-              downloadBlob(`${safeFileName(doc)}.png`, await exportToPngBlob(doc));
-              setOpen(false);
+              try {
+                downloadBlob(`${safeFileName(doc)}.png`, await exportToPngBlob(doc));
+                setOpen(false);
+              } catch {
+                notify(t.exportFailed);
+              }
             }}
           >
             {t.exportPng}
           </button>
           <hr />
           <button onClick={() => fileInputRef.current?.click()}>{t.importFile}</button>
+          <button onClick={saveCopyToNewRoom}>{t.saveCopyToNewRoom}</button>
+          <hr />
+          {TEMPLATES.map((template) => (
+            <button key={template.key} onClick={() => applyTemplate(template)}>
+              {t.templatePrefix} {t[template.labelKey]}
+            </button>
+          ))}
           {error && <p className="file-menu-error">{error}</p>}
         </div>
       )}

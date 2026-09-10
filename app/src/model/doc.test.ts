@@ -13,6 +13,7 @@ import {
   createMindMapDoc,
   deleteLink,
   deleteNodeSubtree,
+  duplicateSubtree,
   ensureStyleMigrated,
   getAllLinks,
   getChildren,
@@ -305,5 +306,41 @@ describe("страна на клетките на първо ниво (§8.13)",
     const b = addChild(doc, a, "Дете");
     setNodeSide(doc, b, "left");
     expect(getChildren(doc, a)[0].side).toBeNull();
+  });
+});
+
+describe("дублиране на клон (§8.15)", () => {
+  it("копира текста, стила и цялото поддърво", () => {
+    const doc = createMindMapDoc();
+    const a = addChild(doc, ROOT_ID, "Оригинал");
+    toggleBold(doc, a);
+    const child = addChild(doc, a, "Дете на оригинала");
+
+    const cloneId = duplicateSubtree(doc, a);
+    expect(cloneId).not.toBeNull();
+    expect(cloneId).not.toBe(a);
+
+    const rootChildren = getChildren(doc, ROOT_ID);
+    expect(rootChildren.map((n) => n.text)).toEqual(["Оригинал", "Оригинал"]);
+    const clone = rootChildren.find((n) => n.id === cloneId)!;
+    expect(clone.style.bold).toBe(true);
+
+    const cloneChildren = getChildren(doc, cloneId!);
+    expect(cloneChildren.map((n) => n.text)).toEqual(["Дете на оригинала"]);
+    expect(cloneChildren[0].id).not.toBe(child); // истинско копие, не същият id
+  });
+
+  it("клонът на пряко дете на корена остава на същата страна", () => {
+    const doc = createMindMapDoc();
+    const a = addChild(doc, ROOT_ID, "A");
+    const side = getChildren(doc, ROOT_ID)[0].side;
+    const cloneId = duplicateSubtree(doc, a);
+    const clone = getChildren(doc, ROOT_ID).find((n) => n.id === cloneId)!;
+    expect(clone.side).toBe(side);
+  });
+
+  it("не дублира корена", () => {
+    const doc = createMindMapDoc();
+    expect(duplicateSubtree(doc, ROOT_ID)).toBeNull();
   });
 });

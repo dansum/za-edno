@@ -22,6 +22,11 @@ import {
 } from "../sync/provider";
 import type { SyncProvider, SyncStatus } from "../sync/provider";
 import { touchMyMap } from "../registry/myMaps";
+import { notify } from "../toast";
+import { useT } from "../i18n/useLanguage";
+import { replaceDocWithTree } from "../importExport/freemind";
+import type { PlainNode } from "../importExport/freemind";
+import { pendingCopyKey } from "../pendingCopy";
 
 const LIVEBLOCKS_PUBLIC_KEY = import.meta.env.VITE_LIVEBLOCKS_PUBLIC_KEY as string | undefined;
 
@@ -59,6 +64,7 @@ function randomName(): string {
 
 /** Създава документа веднъж, свързва персистентност и (по избор) Liveblocks. */
 export function useYDoc(roomId: string): YDocState {
+  const t = useT();
   const docRef = useRef<Y.Doc | undefined>(undefined);
   if (!docRef.current) docRef.current = createMindMapDoc();
   const doc = docRef.current;
@@ -102,6 +108,20 @@ export function useYDoc(roomId: string): YDocState {
     // Връзките (стрелките, §8.2) живеят в собствена Y.Map - същата причина.
     linksMap.observeDeep(onUpdate);
 
+    // "Запази копие в нова стая" (§8.18): ако тази стая е тъкмо новосъздадена
+    // за копие, дървото чака в localStorage - прилага се веднъж тук и се
+    // маха, за да не се приложи пак при следващо отваряне на същата стая.
+    try {
+      const key = pendingCopyKey(roomId);
+      const pending = localStorage.getItem(key);
+      if (pending) {
+        replaceDocWithTree(doc, JSON.parse(pending) as PlainNode, "pending-copy");
+        localStorage.removeItem(key);
+      }
+    } catch {
+      /* повреден/недостъпен localStorage - просто пропускаме копието */
+    }
+
     // Записва картата в таблото (§8.3) веднага при отваряне - не само при
     // първата промяна, иначе разглеждане без редакция не мести "последно отворена".
     touchMyMap(roomId, getAllSnapshots(doc)[ROOT_ID]?.text ?? "");
@@ -143,7 +163,14 @@ export function useYDoc(roomId: string): YDocState {
       // връзка, отбелязваме момента. Докато е свързан, "опресняваме" го и на
       // ритъм (heartbeat) - без ново редактиране статусът сам по себе си не би
       // пратил събитие, а таймерът в UI-я трябва от какво да брои минутите.
+      let lastStatus: SyncStatus | null = null;
       const onStatus = (s: unknown) => {
+        // Видимо известие (§8.16) само при ИСТИНСКА промяна - не при
+        // първоначалното свързване (lastStatus е null тогава).
+        if (lastStatus === "connected" && s === "disconnected") notify(t.networkDisconnected, "error");
+        else if (lastStatus === "disconnected" && s === "connected") notify(t.networkReconnected, "info");
+        lastStatus = s as SyncStatus;
+
         setStatus(s as SyncStatus);
         if (s === "connected") {
           setLastSyncedAt(Date.now());

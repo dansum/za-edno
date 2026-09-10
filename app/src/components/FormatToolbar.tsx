@@ -35,6 +35,7 @@ export function FormatToolbar({
   onAddChild,
   onAddSibling,
   onDelete,
+  onDuplicate,
   onToggleCollapse,
 }: {
   doc: Y.Doc;
@@ -51,6 +52,8 @@ export function FormatToolbar({
   onAddChild: () => void;
   onAddSibling: () => void;
   onDelete: () => void;
+  /** Дублира клетката с цялото ѝ поддърво (§8.15). */
+  onDuplicate: () => void;
   onToggleCollapse: () => void;
 }) {
   const t = useT();
@@ -100,6 +103,9 @@ export function FormatToolbar({
       </button>
       <button title={t.toolbarDelete} disabled={node.id === ROOT_ID} onClick={onDelete}>
         🗑
+      </button>
+      <button title={t.toolbarDuplicate} disabled={node.id === ROOT_ID} onClick={onDuplicate}>
+        ⧉
       </button>
 
       <span className="format-toolbar-sep" />

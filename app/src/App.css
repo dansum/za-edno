@@ -884,3 +884,188 @@ kbd {
   z-index: 5;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
+
+/* ---------- известия (§8.16) ---------- */
+.toast-host {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+  max-width: 360px;
+}
+
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+  color: white;
+}
+
+.toast-error {
+  background: #b3392b;
+}
+
+.toast-info {
+  background: #2a7a4f;
+}
+
+.toast-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 0;
+}
+
+/* ---------- мащаб (§8.19) ---------- */
+.zoom-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  gap: 4px;
+  z-index: 5;
+}
+
+.zoom-controls button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #d0d0cc;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 15px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.zoom-controls button:hover {
+  background: #f0f0ec;
+}
+
+/* ---------- предупреждение за размер (§8.23) ---------- */
+.node-count-warning {
+  font-size: 12px;
+  font-weight: 600;
+  color: #b3392b;
+  background: #fdecea;
+  padding: 3px 8px;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+/* ---------- множествен избор (§8.21) ---------- */
+.mindmap-node.multi-selected {
+  border-color: #9d4edd;
+  box-shadow: 0 0 0 2px rgba(157, 78, 221, 0.35);
+}
+
+.multi-select-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 16px;
+  background: #f3e8fd;
+  border-bottom: 1px solid #e2e2e0;
+  flex-wrap: wrap;
+}
+
+.multi-select-toolbar button {
+  min-width: 30px;
+  height: 30px;
+  border: 1px solid #d0d0cc;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0 8px;
+}
+
+.multi-select-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6a1b9a;
+  margin-right: 4px;
+}
+
+/* ---------- очертание (§8.20) ---------- */
+.outline-panel {
+  width: 520px;
+  max-width: 92vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: white;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.outline-list,
+.outline-list ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 18px;
+}
+
+.outline-list {
+  padding-left: 0;
+}
+
+.outline-list li {
+  margin: 2px 0;
+}
+
+.outline-item {
+  border: none;
+  background: transparent;
+  text-align: left;
+  padding: 3px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #1f2933;
+}
+
+.outline-item:hover {
+  background: #f0f0ec;
+}
+
+/* ---------- конфликт при едновременна редакция (§8.22) ---------- */
+.edit-conflict-banner {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: #fff8e1;
+  border: 1px solid #d99a00;
+  border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+  font-size: 12px;
+  color: #1f2933;
+  white-space: normal;
+  width: 220px;
+  z-index: 40;
+}
+
+.edit-conflict-banner button {
+  border: 1px solid #d0d0cc;
+  background: white;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
