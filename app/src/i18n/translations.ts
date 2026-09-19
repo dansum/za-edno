@@ -131,6 +131,8 @@ const bg = {
   // лента за форматиране
   toolbarBold: "Удебелено (Ctrl+B)",
   toolbarItalic: "Наклонено (Ctrl+I)",
+  toolbarBoldGlyph: "Ч",
+  toolbarItalicGlyph: "К",
   toolbarUndo: "Отмени (Ctrl+Z)",
   toolbarRedo: "Повтори (Ctrl+Y)",
   toolbarTextColor: "Цвят на текста",
@@ -293,6 +295,8 @@ const en: Dictionary = {
 
   toolbarBold: "Bold (Ctrl+B)",
   toolbarItalic: "Italic (Ctrl+I)",
+  toolbarBoldGlyph: "B",
+  toolbarItalicGlyph: "I",
   toolbarUndo: "Undo (Ctrl+Z)",
   toolbarRedo: "Redo (Ctrl+Y)",
   toolbarTextColor: "Text color",

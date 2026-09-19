@@ -22,7 +22,7 @@ import {
   toggleRedText,
 } from "../model/doc";
 import type { LinkInfo, NodeSnapshot } from "../model/doc";
-import { computeLayout } from "../layout/treeLayout";
+import { computeLayout, estimateHeight, estimateWidth } from "../layout/treeLayout";
 import type { LayoutNode } from "../layout/treeLayout";
 import { computeClouds, computeLinkPaths } from "../layout/overlays";
 import { BACKGROUND_COLOR_PALETTE, TEXT_COLOR_PALETTE } from "../model/color";
@@ -85,6 +85,15 @@ export function MindMapCanvas({
   // следващият кликнат възел довършва стрелката от `linkingFrom` към него.
   const [linkingFrom, setLinkingFrom] = useState<string | null>(null);
   const [selectedLinkId, setSelectedLinkId] = useState<string | null>(null);
+  // Втори начин да се свържат две произволни клетки (§8.17), покрай
+  // клик-клик режима по-горе: дърпане с ДЕСНИЯ бутон на мишката от една
+  // клетка до друга. `rightDragFrom` е източникът, `rightDragPos` следва
+  // показалеца (в координатите на платното, за да следва пан/мащаба) за
+  // живата подсказваща линия, `rightDragOverId` е клетката под показалеца
+  // в момента - само тя решава каква ще стане връзката при пускане.
+  const [rightDragFrom, setRightDragFrom] = useState<string | null>(null);
+  const [rightDragPos, setRightDragPos] = useState<{ x: number; y: number } | null>(null);
+  const [rightDragOverId, setRightDragOverId] = useState<string | null>(null);
   // Вярно след щракане на празно място по платното (§8.14) - докато е така,
   // стрелките местят изгледа, вместо да навигират между възлите. Изчиства се
   // при истинска смяна на избрания възел (клик върху възел, търсене, навигация).
@@ -198,9 +207,12 @@ export function MindMapCanvas({
     const isMac = /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
     function onKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape" && linkingFrom) {
+      if (e.key === "Escape" && (linkingFrom || rightDragFrom)) {
         e.preventDefault();
         setLinkingFrom(null);
+        setRightDragFrom(null);
+        setRightDragPos(null);
+        setRightDragOverId(null);
         return;
       }
       if ((e.key === "Delete" || e.key === "Backspace") && selectedLinkId && !editingId) {
@@ -445,6 +457,7 @@ export function MindMapCanvas({
     undoManager,
     onRequestSearch,
     linkingFrom,
+    rightDragFrom,
     selectedLinkId,
     canvasFocused,
     multiSelected,
@@ -553,6 +566,42 @@ export function MindMapCanvas({
     };
   }, [dragId]);
 
+  // ---- връзка между произволни клетки с дясното копче на мишката (§8.17) ----
+  // За разлика от местенето по-горе, тук показалецът трябва да се следи и
+  // НАД празното платно (за живата линия до курсора), затова слушаме
+  // `pointermove`, не само `pointerup`. Няма `setPointerCapture` никъде -
+  // нарочно, за да продължат да сработват естествените `pointerenter`/
+  // `pointerleave` на клетките под курсора, точно както при влаченето за
+  // местене по-горе.
+  useEffect(() => {
+    if (!rightDragFrom) return;
+    function onMove(e: PointerEvent) {
+      const viewport = containerRef.current;
+      if (!viewport) return;
+      const rect = viewport.getBoundingClientRect();
+      setRightDragPos({
+        x: (e.clientX - rect.left - pan.x) / zoom,
+        y: (e.clientY - rect.top - pan.y) / zoom,
+      });
+    }
+    function onUp() {
+      if (rightDragFrom && rightDragOverId && rightDragOverId !== rightDragFrom) {
+        addLink(doc, rightDragFrom, rightDragOverId, LOCAL_ORIGIN);
+      }
+      setRightDragFrom(null);
+      setRightDragPos(null);
+      setRightDragOverId(null);
+    }
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [rightDragFrom, rightDragOverId, pan, zoom, doc]);
+
   // Действия за изграждане на дървото - споделени между клавиатурата
   // (по-долу) и бутоните в лентата за форматиране, за да работят и на
   // телефон/таблет без физическа клавиатура (§8.6).
@@ -582,12 +631,34 @@ export function MindMapCanvas({
   }
 
   function onNodePointerDown(e: React.PointerEvent, id: string) {
+    // Дясното копче задейства влачене за СВЪРЗВАНЕ (§8.17), не местене - и
+    // работи и от/към корена, за разлика от местенето, защото връзките
+    // (за разлика от преместването в дървото) нямат смисъл на "родител".
+    if (e.button === 2) {
+      e.preventDefault(); // без това браузърът показва контекстното си меню
+      e.stopPropagation();
+      const viewport = containerRef.current;
+      if (viewport) {
+        const rect = viewport.getBoundingClientRect();
+        setRightDragPos({
+          x: (e.clientX - rect.left - pan.x) / zoom,
+          y: (e.clientY - rect.top - pan.y) / zoom,
+        });
+      }
+      setRightDragFrom(id);
+      return;
+    }
     if (id === ROOT_ID) return;
     e.stopPropagation();
     setDragId(id);
   }
   function onNodePointerEnter(id: string) {
     if (dragId && dragId !== id) setDropTarget(id);
+    if (rightDragFrom && rightDragFrom !== id) setRightDragOverId(id);
+  }
+  /** Маха подсказката за връзка, ако показалецът напусне клетката без да я пусне тук (§8.17). */
+  function onNodePointerLeave(id: string) {
+    setRightDragOverId((cur) => (cur === id ? null : cur));
   }
   /** Следи в коя зона на целевата клетка е показалецът, за да се вижда какво ще стане (§8.13). */
   function onNodePointerMove(e: React.PointerEvent, id: string) {
@@ -711,12 +782,12 @@ export function MindMapCanvas({
               for (const id of effectiveSelection) if (id !== ROOT_ID) toggleBold(doc, id, LOCAL_ORIGIN);
             }}
           >
-            <strong>Ч</strong>
+            <strong>{t.toolbarBoldGlyph}</strong>
           </button>
           <button title={t.toolbarItalic} onClick={() => {
             for (const id of effectiveSelection) if (id !== ROOT_ID) toggleItalic(doc, id, LOCAL_ORIGIN);
           }}>
-            <em>К</em>
+            <em>{t.toolbarItalicGlyph}</em>
           </button>
           <div className="format-picker-wrap">
             <button
@@ -754,7 +825,7 @@ export function MindMapCanvas({
           </div>
         </div>
       )}
-      {linkingFrom && <div className="mindmap-linking-hint">{t.linkingHint}</div>}
+      {(linkingFrom || rightDragFrom) && <div className="mindmap-linking-hint">{t.linkingHint}</div>}
       <div
         ref={containerRef}
         className={`mindmap-viewport${linkingFrom ? " linking" : ""}`}
@@ -827,6 +898,21 @@ export function MindMapCanvas({
               }}
             />
           ))}
+          {rightDragFrom &&
+            rightDragPos &&
+            (() => {
+              const from = layout.nodes.find((n) => n.id === rightDragFrom);
+              if (!from) return null;
+              const fromX = from.x + from.width / 2;
+              const fromY = from.y + from.height / 2;
+              return (
+                <path
+                  d={`M ${fromX} ${fromY} L ${rightDragPos.x} ${rightDragPos.y}`}
+                  className={`mindmap-link-preview${rightDragOverId ? " will-connect" : ""}`}
+                  markerEnd="url(#mindmap-link-arrow)"
+                />
+              );
+            })()}
         </svg>
 
         {layout.nodes.map((n) => (
@@ -839,6 +925,8 @@ export function MindMapCanvas({
             isDropTarget={n.id === dropTarget}
             dropZone={n.id === dropTarget ? dropZone : null}
             isDragging={n.id === dragId}
+            isLinkSource={n.id === rightDragFrom}
+            isLinkTarget={n.id === rightDragOverId && rightDragFrom !== null}
             isMatch={matchSet.has(n.id)}
             isActiveMatch={search.activeMatch === n.id}
             dimmed={search.dimOthers && search.matches.length > 0 && !matchSet.has(n.id)}
@@ -857,6 +945,7 @@ export function MindMapCanvas({
             onPointerEnter={() => onNodePointerEnter(n.id)}
             onPointerMove={(e) => onNodePointerMove(e, n.id)}
             onPointerUp={(e) => onNodePointerUp(e, n.id)}
+            onPointerLeave={() => onNodePointerLeave(n.id)}
           />
         ))}
       </div>
@@ -885,6 +974,8 @@ function NodeBox({
   isDropTarget,
   dropZone,
   isDragging,
+  isLinkSource,
+  isLinkTarget,
   isMatch,
   isActiveMatch,
   dimmed,
@@ -899,6 +990,7 @@ function NodeBox({
   onPointerEnter,
   onPointerMove,
   onPointerUp,
+  onPointerLeave,
 }: {
   layoutNode: LayoutNode;
   snapshot: NodeSnapshot | undefined;
@@ -910,6 +1002,10 @@ function NodeBox({
   /** Кое ще стане при пускане тук - за визуалната подсказка (§8.13). */
   dropZone: DropZone | null;
   isDragging: boolean;
+  /** Източникът на връзка, дърпана с десния бутон на мишката (§8.17). */
+  isLinkSource: boolean;
+  /** Клетката под показалеца, докато се дърпа връзка с десния бутон (§8.17). */
+  isLinkTarget: boolean;
   isMatch: boolean;
   isActiveMatch: boolean;
   dimmed: boolean;
@@ -925,6 +1021,7 @@ function NodeBox({
   onPointerEnter: () => void;
   onPointerMove: (e: React.PointerEvent) => void;
   onPointerUp: (e: React.PointerEvent) => void;
+  onPointerLeave: () => void;
 }) {
   const t = useT();
   const [draft, setDraft] = useState(layoutNode.text);
@@ -964,6 +1061,23 @@ function NodeBox({
     if (selected && !editing) boxRef.current?.focus({ preventScroll: true });
   }, [selected, editing]);
 
+  // Клетката расте/се свива веднага докато потребителят пише, не едва след
+  // потвърждаване (§8.16) - преди това ставаше едва при следващото
+  // прекомпютиране на цялото оформление (при onCommitText). Позицията се
+  // закотвя откъм ръба, който потребителят очаква да остане на място: лявата
+  // страна расте наляво (запазва десния си ръб до връзката към родителя),
+  // дясната страна и коренът растат надясно/симетрично.
+  const liveWidth = editing ? estimateWidth(draft, snapshot?.style) : layoutNode.width;
+  const liveHeight = editing ? estimateHeight(draft) : layoutNode.height;
+  const liveX = editing
+    ? layoutNode.side === "left"
+      ? layoutNode.x + layoutNode.width - liveWidth
+      : layoutNode.side === "right"
+        ? layoutNode.x
+        : layoutNode.x + (layoutNode.width - liveWidth) / 2
+    : layoutNode.x;
+  const liveY = editing ? layoutNode.y + (layoutNode.height - liveHeight) / 2 : layoutNode.y;
+
   return (
     <div
       ref={boxRef}
@@ -974,6 +1088,8 @@ function NodeBox({
         isDropTarget && "drop-target",
         isDropTarget && dropZone && `drop-${dropZone}`,
         isDragging && "dragging",
+        isLinkSource && "link-source",
+        isLinkTarget && "link-target",
         isMatch && "search-match",
         isActiveMatch && "search-active",
         dimmed && "dimmed",
@@ -982,10 +1098,10 @@ function NodeBox({
         .filter(Boolean)
         .join(" ")}
       style={{
-        left: layoutNode.x,
-        top: layoutNode.y,
-        width: layoutNode.width,
-        height: layoutNode.height,
+        left: liveX,
+        top: liveY,
+        width: liveWidth,
+        height: liveHeight,
         backgroundColor: snapshot?.style?.background,
         color: snapshot?.style?.color ?? readableTextColorFor(snapshot?.style?.background),
       }}
@@ -996,10 +1112,12 @@ function NodeBox({
       aria-label={t.a11yNode(layoutNode.text || t.emptyNode)}
       onClick={onSelect}
       onDoubleClick={onStartEdit}
+      onContextMenu={(e) => e.preventDefault()}
       onPointerDown={onPointerDown}
       onPointerEnter={onPointerEnter}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
+      onPointerLeave={onPointerLeave}
     >
       {presenceUsers.length > 0 && (
         <div className="node-presence">

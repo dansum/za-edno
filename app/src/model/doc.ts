@@ -120,7 +120,7 @@ export function createMindMapDoc(): Y.Doc {
       root.set("parent", null);
       root.set("order", "a0");
       const text = new Y.Text();
-      text.insert(0, "Централна тема");
+      text.insert(0, "Mindmap origin / начална клетка");
       root.set("text", text);
       root.set("note", new Y.Text());
       root.set("collapsed", false);

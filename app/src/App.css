@@ -953,7 +953,7 @@ kbd {
   background: #f0f0ec;
 }
 
-/* ---------- предупреждение за размер (§8.23) ---------- */
+/* ---------- предупреждение за размер (§8.16) ---------- */
 .node-count-warning {
   font-size: 12px;
   font-weight: 600;
@@ -1068,4 +1068,27 @@ kbd {
   padding: 4px 8px;
   cursor: pointer;
   font-size: 12px;
+}
+
+/* ---------- връзка между произволни клетки с десния бутон на мишката (§8.17) ---------- */
+.mindmap-link-preview {
+  fill: none;
+  stroke: #9d4edd;
+  stroke-width: 2;
+  stroke-dasharray: 4 4;
+  opacity: 0.55;
+}
+
+.mindmap-link-preview.will-connect {
+  opacity: 1;
+  stroke-width: 3;
+}
+
+.mindmap-node.link-source {
+  opacity: 0.6;
+}
+
+.mindmap-node.link-target {
+  border-color: #9d4edd;
+  box-shadow: 0 0 0 3px rgba(157, 78, 221, 0.45);
 }

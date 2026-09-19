@@ -38,21 +38,51 @@ function textLines(text: string): string[] {
   return (text || " ").split("\n");
 }
 
+let measureCanvas: HTMLCanvasElement | null = null;
+
 /**
- * Приблизителна ширина на клетката. Отчита удебелянето (по-широки букви),
- * иконите пред текста (§7.1, §7.5) и само НАЙ-ДЪЛГИЯ ред при многоредов текст
- * (Alt+Enter, §8.1) - иначе клетката излиза по-тясна от съдържанието си и
- * текстът/иконите изтичат извън рамката.
+ * Истинската широчина на реда в пиксели, чрез скрит `canvas` със същия шрифт
+ * като клетките (вж. `.mindmap-node` в App.css). Преди тук имаше груба оценка
+ * "8px на знак", която системно излизаше по-широка от реално изрисувания
+ * текст (латинските букви са по-тесни от кирилицата средно) - затова
+ * празното място вдясно в клетката изглеждаше по-дълго от самия текст
+ * (§8.16). В тестова среда (happy-dom) `canvas` няма 2D контекст - пада
+ * обратно на старата груба оценка, достатъчна за ОТНОСИТЕЛНИТЕ сравнения,
+ * които правят тестовете, но не и за истинския изглед в браузъра.
  */
-function estimateWidth(text: string, style?: NodeStyle): number {
-  const charW = style?.bold ? CHAR_W + 1.5 : CHAR_W;
+function measureTextWidth(text: string, bold: boolean): number {
+  if (typeof document !== "undefined") {
+    if (!measureCanvas) measureCanvas = document.createElement("canvas");
+    const ctx = measureCanvas.getContext("2d");
+    if (ctx) {
+      ctx.font = `${bold ? 700 : 400} 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+      return ctx.measureText(text).width;
+    }
+  }
+  return text.length * (bold ? CHAR_W + 1.5 : CHAR_W);
+}
+
+/**
+ * Ширината на клетката. Отчита удебелянето (по-широки букви), иконите пред
+ * текста (§7.1, §7.5) и само НАЙ-ДЪЛГИЯ ред при многоредов текст (Alt+Enter,
+ * §8.1) - иначе клетката излиза по-тясна от съдържанието си и текстът/иконите
+ * изтичат извън рамката. Изнесена (не е `static` в модула), за да я ползва и
+ * `NodeBox` за живо преоразмеряване, докато потребителят пише (§8.16).
+ */
+export function estimateWidth(text: string, style?: NodeStyle): number {
   const iconsW = (style?.icons?.length ?? 0) * ICON_W;
-  const longestLine = Math.max(...textLines(text).map((l) => l.length));
-  return Math.max(MIN_W, longestLine * charW + PADDING_X + iconsW);
+  const longestLineW = textLines(text).reduce(
+    (max, line) => Math.max(max, measureTextWidth(line, !!style?.bold)),
+    0,
+  );
+  // +2px предпазен запас срещу леко подценяване на `measureText` спрямо
+  // истинското изчертаване (антиалиасинг/кернинг) - за предпочитане пред
+  // отрязан текст, но много по-малко от старата фиксирана оценка.
+  return Math.max(MIN_W, Math.ceil(longestLineW) + 2 + PADDING_X + iconsW);
 }
 
 /** Височина на клетката - расте с броя редове при многоредов текст (Alt+Enter). */
-function estimateHeight(text: string): number {
+export function estimateHeight(text: string): number {
   return Math.max(NODE_H, textLines(text).length * LINE_H + LINE_V_PADDING);
 }
 

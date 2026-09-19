@@ -115,14 +115,14 @@ export function FormatToolbar({
         title={t.toolbarBold}
         onClick={() => toggleBold(doc, node.id, origin)}
       >
-        <strong>Ч</strong>
+        <strong>{t.toolbarBoldGlyph}</strong>
       </button>
       <button
         className={node.style.italic ? "active" : ""}
         title={t.toolbarItalic}
         onClick={() => toggleItalic(doc, node.id, origin)}
       >
-        <em>К</em>
+        <em>{t.toolbarItalicGlyph}</em>
       </button>
 
       <span className="format-toolbar-sep" />
