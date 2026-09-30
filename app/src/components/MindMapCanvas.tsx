@@ -22,7 +22,14 @@ import {
   toggleRedText,
 } from "../model/doc";
 import type { LinkInfo, NodeSnapshot } from "../model/doc";
-import { computeLayout, estimateHeight, estimateWidth } from "../layout/treeLayout";
+import {
+  SMALL_SCREEN_QUERY,
+  computeLayout,
+  estimateHeight,
+  estimateWidth,
+  rootMeasureStyle,
+  visualLines,
+} from "../layout/treeLayout";
 import type { LayoutNode } from "../layout/treeLayout";
 import { computeClouds, computeLinkPaths } from "../layout/overlays";
 import { BACKGROUND_COLOR_PALETTE, TEXT_COLOR_PALETTE } from "../model/color";
@@ -114,8 +121,22 @@ export function MindMapCanvas({
 
   const matchSet = useMemo(() => new Set(search.matches), [search.matches]);
 
+  // На тесен екран клетките са с по-едър шрифт (App.css) - при преминаване
+  // през границата оформлението трябва да се премери наново (§8.19).
+  const [smallScreen, setSmallScreen] = useState(() => window.matchMedia(SMALL_SCREEN_QUERY).matches);
+  useEffect(() => {
+    const mq = window.matchMedia(SMALL_SCREEN_QUERY);
+    const onChange = () => setSmallScreen(mq.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+
   const root = nodes[ROOT_ID];
-  const layout = useMemo(() => (root ? computeLayout(doc, root) : null), [doc, root, nodes]);
+  const layout = useMemo(
+    () => (root ? computeLayout(doc, root) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- smallScreen сменя шрифта, по който мери computeLayout
+    [doc, root, nodes, smallScreen],
+  );
 
   // „Облак" и връзки/стрелки (§8.2) - геометрията е споделена с износа като
   // изображение (importExport/imageExport.ts), вж. layout/overlays.ts.
@@ -1067,12 +1088,11 @@ function NodeBox({
   // закотвя откъм ръба, който потребителят очаква да остане на място: лявата
   // страна расте наляво (запазва десния си ръб до връзката към родителя),
   // дясната страна и коренът растат надясно/симетрично.
-  // Коренът е винаги получер чрез CSS - мерим го със `bold: true`, за да
+  // Коренът е винаги получер чрез CSS - мерим го като получер, за да
   // съвпада живото оразмеряване с това в оформлението (§8.18).
-  const liveWidth = editing
-    ? estimateWidth(draft, layoutNode.id === ROOT_ID ? { ...snapshot?.style, bold: true } : snapshot?.style)
-    : layoutNode.width;
-  const liveHeight = editing ? estimateHeight(draft) : layoutNode.height;
+  const measureStyle = layoutNode.id === ROOT_ID ? rootMeasureStyle(snapshot?.style) : snapshot?.style;
+  const liveWidth = editing ? estimateWidth(draft, measureStyle) : layoutNode.width;
+  const liveHeight = editing ? estimateHeight(draft, measureStyle) : layoutNode.height;
   const liveX = editing
     ? layoutNode.side === "left"
       ? layoutNode.x + layoutNode.width - liveWidth
@@ -1135,7 +1155,7 @@ function NodeBox({
           <textarea
             autoFocus
             className="node-edit-input"
-            rows={draft.split("\n").length}
+            rows={visualLines(draft, measureStyle).length}
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {

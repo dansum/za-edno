@@ -1,7 +1,7 @@
 // Тест за оформлението при многоредов текст (Alt+Enter, §8.1) — вж. PLAN.md.
 import { describe, expect, it } from "vitest";
 import { ROOT_ID, addChild, createMindMapDoc, getAllSnapshots, setNodeText } from "../model/doc";
-import { computeLayout } from "./treeLayout";
+import { computeLayout, estimateHeight, estimateWidth, visualLines } from "./treeLayout";
 
 describe("оформление при многоредов текст (§8.1)", () => {
   it("клетка с два реда е по-висока от клетка с един ред", () => {
@@ -49,5 +49,29 @@ describe("ширината на корена отчита получерния �
     const rootBox = layout.nodes.find((n) => n.id === ROOT_ID)!;
     const childBox = layout.nodes.find((n) => n.id === child)!;
     expect(rootBox.width).toBeGreaterThan(childBox.width);
+  });
+});
+
+describe("един ред по подразбиране, пренасяне само при твърде дълъг текст (§8.19)", () => {
+  it("кратък текст е на един ред и с височината на една клетка", () => {
+    const one = estimateHeight("Кратка клетка");
+    expect(visualLines("Кратка клетка")).toEqual(["Кратка клетка"]);
+    expect(estimateHeight("Кратка клетка\nвтори ред")).toBeGreaterThan(one);
+  });
+
+  it("дълъг текст без нов ред се пренася по думи и не надхвърля максималната ширина", () => {
+    const long = "дума ".repeat(40).trim();
+    const lines = visualLines(long);
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.join(" ")).toBe(long); // нищо не се губи и не се дублира
+    expect(estimateHeight(long)).toBeGreaterThan(estimateHeight("дума"));
+    expect(estimateWidth(long)).toBeLessThanOrEqual(320 + 2 + 24);
+  });
+
+  it("дума, по-дълга от целия ред, се реже по знаци", () => {
+    const word = "а".repeat(100);
+    const lines = visualLines(word);
+    expect(lines.length).toBeGreaterThan(1);
+    expect(lines.join("")).toBe(word);
   });
 });

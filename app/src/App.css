@@ -178,6 +178,9 @@ body {
 .node-text {
   white-space: pre-wrap; /* пази ръчните нови редове от Alt+Enter (§8.1) */
   overflow-wrap: break-word;
+  /* = LINE_H в layout/treeLayout.ts - иначе височината на клетката не
+     съвпада с реалния брой редове (§8.19) */
+  line-height: 20px;
 }
 
 .node-edit-input {
@@ -186,8 +189,14 @@ body {
   outline: none;
   resize: none;
   font-family: inherit;
-  font-size: 13px;
+  font-size: inherit;
+  font-weight: inherit;
   line-height: 20px;
+  /* без отстъпа по подразбиране на textarea редът е точно толкова широк,
+     колкото е изчислен, и не пренася по-рано от показания текст; без
+     overflow полето показваше стрелки за превъртане (§8.19) */
+  padding: 0;
+  overflow: hidden;
   background: transparent;
   /* §8.9: полета за въвеждане не наследват надеждно цвета на родителя си
      по подразбиране (за разлика от обикновени елементи) - без това редакцията

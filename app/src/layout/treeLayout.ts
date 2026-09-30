@@ -27,35 +27,46 @@ const H_GAP = 60; // хоризонтално разстояние между н
 const V_GAP = 12; // вертикално разстояние между братя
 const NODE_H = 36;
 const CHAR_W = 8;
-const PADDING_X = 20;
+// Хоризонталната „обвивка" около текста: 2×10px отстъп + 2×2px рамка на
+// `.mindmap-node` (App.css, box-sizing: border-box). Беше 20 - без рамката -
+// и текстът оставаше с 2px по-тесен от себе си, затова ВСЯКА клетка
+// пренасяше последната си дума на втори ред (§8.19).
+const CHROME_X = 24;
 const MIN_W = 60;
-const LINE_H = 20; // височина на един ред текст (Alt+Enter за нов ред, §8.1)
+/** Височина на един ред текст - съвпада с `line-height` на `.node-text` и `.node-edit-input`. */
+export const LINE_H = 20;
 const LINE_V_PADDING = 16;
+/**
+ * Текст, по-широк от това, се пренася на следващ ред (§8.19) - иначе една
+ * дълга клетка се простира през половината екран. Под него клетката е
+ * винаги на един ред, освен при ръчен нов ред (Alt+Enter, §8.1).
+ */
+const MAX_TEXT_W = 320;
 
 const ICON_W = 20; // приблизителна ширина на едно емоджи-иконка
 
-function textLines(text: string): string[] {
-  return (text || " ").split("\n");
+/** Същата граница като медийната заявка в App.css, под която клетките са 14px вместо 13px. */
+export const SMALL_SCREEN_QUERY = "(max-width: 720px)";
+
+function nodeFontPx(): number {
+  return typeof window !== "undefined" && window.matchMedia?.(SMALL_SCREEN_QUERY).matches ? 14 : 13;
 }
 
 let measureCanvas: HTMLCanvasElement | null = null;
 
 /**
- * Истинската широчина на реда в пиксели, чрез скрит `canvas` със същия шрифт
- * като клетките (вж. `.mindmap-node` в App.css). Преди тук имаше груба оценка
- * "8px на знак", която системно излизаше по-широка от реално изрисувания
- * текст (латинските букви са по-тесни от кирилицата средно) - затова
- * празното място вдясно в клетката изглеждаше по-дълго от самия текст
- * (§8.16). В тестова среда (happy-dom) `canvas` няма 2D контекст - пада
- * обратно на старата груба оценка, достатъчна за ОТНОСИТЕЛНИТЕ сравнения,
- * които правят тестовете, но не и за истинския изглед в браузъра.
+ * Истинската широчина на текста в пиксели, чрез скрит `canvas` със същия
+ * шрифт като клетките (вж. `.mindmap-node` в App.css), включително размера
+ * му, който на тесен екран е по-едър. В тестова среда (happy-dom) `canvas`
+ * няма 2D контекст - пада обратно на груба оценка "8px на знак", достатъчна
+ * за ОТНОСИТЕЛНИТЕ сравнения в тестовете, но не и за истинския изглед.
  */
 function measureTextWidth(text: string, bold: boolean): number {
   if (typeof document !== "undefined") {
     if (!measureCanvas) measureCanvas = document.createElement("canvas");
     const ctx = measureCanvas.getContext("2d");
     if (ctx) {
-      ctx.font = `${bold ? 700 : 400} 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+      ctx.font = `${bold ? 700 : 400} ${nodeFontPx()}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
       return ctx.measureText(text).width;
     }
   }
@@ -63,27 +74,76 @@ function measureTextWidth(text: string, bold: boolean): number {
 }
 
 /**
- * Ширината на клетката. Отчита удебелянето (по-широки букви), иконите пред
- * текста (§7.1, §7.5) и само НАЙ-ДЪЛГИЯ ред при многоредов текст (Alt+Enter,
- * §8.1) - иначе клетката излиза по-тясна от съдържанието си и текстът/иконите
- * изтичат извън рамката. Изнесена (не е `static` в модула), за да я ползва и
- * `NodeBox` за живо преоразмеряване, докато потребителят пише (§8.16).
+ * Пренася един ред (без ръчни нови редове в него) по думи, така както го
+ * пренася и браузърът при `white-space: pre-wrap` - жадно, по интервалите;
+ * дума, по-дълга от целия ред, се реже по знаци (`overflow-wrap: break-word`).
+ */
+function wrapLine(line: string, bold: boolean): string[] {
+  if (measureTextWidth(line, bold) <= MAX_TEXT_W) return [line];
+  const out: string[] = [];
+  let current = "";
+  for (const word of line.split(" ")) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (measureTextWidth(candidate, bold) <= MAX_TEXT_W) {
+      current = candidate;
+      continue;
+    }
+    if (current) out.push(current);
+    if (measureTextWidth(word, bold) <= MAX_TEXT_W) {
+      current = word;
+      continue;
+    }
+    current = "";
+    for (const ch of word) {
+      if (current && measureTextWidth(current + ch, bold) > MAX_TEXT_W) {
+        out.push(current);
+        current = ch;
+      } else {
+        current += ch;
+      }
+    }
+  }
+  if (current) out.push(current);
+  return out;
+}
+
+/**
+ * Редовете, които реално се виждат в клетката: ръчните нови редове
+ * (Alt+Enter) плюс автоматичното пренасяне на твърде дълги редове (§8.19).
+ * Ползва се за ширината и височината на клетката, за броя редове в полето
+ * при редакция и от износа като изображение.
+ */
+export function visualLines(text: string, style?: NodeStyle): string[] {
+  return (text || " ").split("\n").flatMap((line) => wrapLine(line, !!style?.bold));
+}
+
+/**
+ * Ширината на клетката: най-широкият видим ред + иконите пред текста (§7.5)
+ * + обвивката. Изнесена, за да я ползва и `NodeBox` за живо преоразмеряване,
+ * докато потребителят пише (§8.16).
  */
 export function estimateWidth(text: string, style?: NodeStyle): number {
   const iconsW = (style?.icons?.length ?? 0) * ICON_W;
-  const longestLineW = textLines(text).reduce(
+  const widestLineW = visualLines(text, style).reduce(
     (max, line) => Math.max(max, measureTextWidth(line, !!style?.bold)),
     0,
   );
   // +2px предпазен запас срещу леко подценяване на `measureText` спрямо
-  // истинското изчертаване (антиалиасинг/кернинг) - за предпочитане пред
-  // отрязан текст, но много по-малко от старата фиксирана оценка.
-  return Math.max(MIN_W, Math.ceil(longestLineW) + 2 + PADDING_X + iconsW);
+  // истинското изчертаване (антиалиасинг/кернинг).
+  return Math.max(MIN_W, Math.ceil(widestLineW) + 2 + CHROME_X + iconsW);
 }
 
-/** Височина на клетката - расте с броя редове при многоредов текст (Alt+Enter). */
-export function estimateHeight(text: string): number {
-  return Math.max(NODE_H, textLines(text).length * LINE_H + LINE_V_PADDING);
+/** Височина на клетката - расте с броя видими редове (ръчни и автоматично пренесени). */
+export function estimateHeight(text: string, style?: NodeStyle): number {
+  return Math.max(NODE_H, visualLines(text, style).length * LINE_H + LINE_V_PADDING);
+}
+
+/**
+ * Стилът, по който се МЕРИ коренът: той е винаги получер чрез CSS
+ * (`.mindmap-node.root`), независимо от `style.bold` в модела (§8.18).
+ */
+export function rootMeasureStyle(style: NodeStyle | undefined): NodeStyle {
+  return { ...style, bold: true };
 }
 
 interface SubtreeResult {
@@ -97,7 +157,7 @@ function layoutSubtree(
   node: NodeSnapshot,
 ): SubtreeResult {
   const width = estimateWidth(node.text || " ", node.style);
-  const ownHeight = estimateHeight(node.text || " ");
+  const ownHeight = estimateHeight(node.text || " ", node.style);
   if (node.collapsed) {
     return {
       height: ownHeight,
@@ -187,8 +247,9 @@ export function computeLayout(doc: Y.Doc, root: NodeSnapshot): LayoutResult {
   // мереше по-тънкия (обикновен) шрифт и излизаше няколко пиксела по-тясна
   // от РЕАЛНО изчертания получер текст, затова коренът пренасяше на втори
   // ред дори при съвсем нормална дължина на текста (§8.18).
-  const rootWidth = estimateWidth(root.text || " ", { ...root.style, bold: true });
-  const rootHeight = estimateHeight(root.text || " ");
+  const rootStyle = rootMeasureStyle(root.style);
+  const rootWidth = estimateWidth(root.text || " ", rootStyle);
+  const rootHeight = estimateHeight(root.text || " ", rootStyle);
   const nodes: LayoutNode[] = [];
   const edges: { from: string; to: string }[] = [];
 

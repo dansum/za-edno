@@ -4,7 +4,7 @@
 
 import { ROOT_ID, getAllLinks, getAllSnapshots } from "../model/doc";
 import type * as Y from "yjs";
-import { computeLayout } from "../layout/treeLayout";
+import { LINE_H, computeLayout, rootMeasureStyle, visualLines } from "../layout/treeLayout";
 import { computeClouds, computeLinkPaths } from "../layout/overlays";
 import { ICON_CATALOG } from "../model/icons";
 
@@ -75,13 +75,21 @@ export function exportToSvg(doc: Y.Doc): string {
     const weight = snap?.style.bold || isRoot ? "700" : "400";
     const fontStyle = snap?.style.italic ? "italic" : "normal";
     const icons = (snap?.style.icons ?? []).map((id) => ICON_CATALOG.find((i) => i.id === id)?.emoji ?? "").join(" ");
-    const label = escapeXmlText(`${icons}${icons ? " " : ""}${n.text || ""}`);
+    // Същите редове като на платното - ръчни нови редове и автоматично
+    // пренасяне на твърде дълъг текст (§8.19); иконите стоят пред първия.
+    const lines = visualLines(n.text || "", isRoot ? rootMeasureStyle(snap?.style) : snap?.style);
+    lines[0] = `${icons}${icons ? " " : ""}${lines[0]}`;
+    const firstY = n.y + n.height / 2 - ((lines.length - 1) * LINE_H) / 2;
+    const cx = n.x + n.width / 2;
+    const tspans = lines
+      .map((line, i) => `<tspan x="${cx}" y="${firstY + i * LINE_H}">${escapeXmlText(line)}</tspan>`)
+      .join("");
 
     parts.push(
       `<rect x="${n.x}" y="${n.y}" width="${n.width}" height="${n.height}" rx="8" fill="${bg}" stroke="${isRoot ? bg : NODE_BORDER}" stroke-width="2"/>`,
     );
     parts.push(
-      `<text x="${n.x + n.width / 2}" y="${n.y + n.height / 2}" text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="${weight}" font-style="${fontStyle}" fill="${textColor}">${label}</text>`,
+      `<text text-anchor="middle" dominant-baseline="central" font-size="13" font-weight="${weight}" font-style="${fontStyle}" fill="${textColor}">${tspans}</text>`,
     );
   }
 
