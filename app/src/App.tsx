@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ROOT_ID } from "./model/doc";
 import { useYDoc } from "./hooks/useYDoc";
 import { useUndoManager } from "./hooks/useUndo";
@@ -54,6 +54,15 @@ function AppShell() {
   }
   const presence = usePresence(provider?.awareness, authorName, selectedId);
   const canvasRef = useRef<CanvasHandle | null>(null);
+
+  // Заглавието на раздела следва избрания език И съдържанието на главната
+  // клетка ("Заедност: <главна клетка>" / "Za-edno: <главна клетка>") - иначе
+  // отворените в много табове карти изглеждат неразличими едни от други.
+  const rootText = nodes[ROOT_ID]?.text;
+  useEffect(() => {
+    const mainCell = (rootText || "").replace(/\s+/g, " ").trim() || t.emptyNode;
+    document.title = `${t.appName}: ${mainCell}`;
+  }, [t, rootText]);
 
   const openSearch = useCallback(() => setSearchOpen(true), []);
   const jumpToNode = useCallback((nodeId: string) => {

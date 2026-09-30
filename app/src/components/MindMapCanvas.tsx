@@ -1067,7 +1067,11 @@ function NodeBox({
   // закотвя откъм ръба, който потребителят очаква да остане на място: лявата
   // страна расте наляво (запазва десния си ръб до връзката към родителя),
   // дясната страна и коренът растат надясно/симетрично.
-  const liveWidth = editing ? estimateWidth(draft, snapshot?.style) : layoutNode.width;
+  // Коренът е винаги получер чрез CSS - мерим го със `bold: true`, за да
+  // съвпада живото оразмеряване с това в оформлението (§8.18).
+  const liveWidth = editing
+    ? estimateWidth(draft, layoutNode.id === ROOT_ID ? { ...snapshot?.style, bold: true } : snapshot?.style)
+    : layoutNode.width;
   const liveHeight = editing ? estimateHeight(draft) : layoutNode.height;
   const liveX = editing
     ? layoutNode.side === "left"

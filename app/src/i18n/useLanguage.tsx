@@ -44,11 +44,13 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
     [language],
   );
 
-  // Заглавието на раздела и езикът на документа следват избора - иначе
-  // екранните четци и историята на браузъра остават на грешния език.
+  // Езикът на документа следва избора - иначе екранните четци остават на
+  // грешния език. Заглавието на раздела (document.title) НЕ се пипа тук -
+  // App.tsx го смята от избрания език И съдържанието на главната клетка
+  // ("Заедност: <главна клетка>"), а admin.html нарочно не ползва
+  // <LanguageProvider> точно за да не пипа неговото собствено заглавие
+  // (вж. коментара в AdminApp.tsx).
   useEffect(() => {
-    const dict = dictionaries[language];
-    document.title = `${dict.appName} — ${dict.appTagline}`;
     document.documentElement.lang = language;
   }, [language]);
 

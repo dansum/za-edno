@@ -409,6 +409,14 @@ export function toggleIcon(doc: Y.Doc, nodeId: string, iconId: string, origin?: 
   writeStyle(doc, nodeId, { ...current, icons: next }, origin);
 }
 
+/** Маха последната добавена икона от клетката (бутон в менюто с икони, §8.18). */
+export function removeLastIcon(doc: Y.Doc, nodeId: string, origin?: unknown): void {
+  const current = readStyle(doc, nodeId);
+  const icons = current.icons ?? [];
+  if (icons.length === 0) return;
+  writeStyle(doc, nodeId, { ...current, icons: icons.slice(0, -1) }, origin);
+}
+
 /**
  * Еднократно мигриране на стари карти: премества стила от вложеното Y.Map
  * поле `node.style` (отпреди YKeyValue хранилището, вж. коментара горе) в

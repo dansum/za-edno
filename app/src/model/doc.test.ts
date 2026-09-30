@@ -23,6 +23,7 @@ import {
   isSafeLinkUrl,
   moveNode,
   reattachOrphans,
+  removeLastIcon,
   setBackgroundColor,
   setCloud,
   setLink,
@@ -203,6 +204,23 @@ describe("стил на клетката (Фаза 7)", () => {
     expect(getChildren(doc, ROOT_ID)[0].style.icons).toEqual(["num-1", "idea"]);
     toggleIcon(doc, id, "num-1"); // повторно -> маха се
     expect(getChildren(doc, ROOT_ID)[0].style.icons).toEqual(["idea"]);
+  });
+
+  it("removeLastIcon маха последната добавена икона, не първата (§8.18)", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Задача");
+    toggleIcon(doc, id, "num-1");
+    toggleIcon(doc, id, "idea");
+    toggleIcon(doc, id, "star");
+    removeLastIcon(doc, id);
+    expect(getChildren(doc, ROOT_ID)[0].style.icons).toEqual(["num-1", "idea"]);
+  });
+
+  it("removeLastIcon не прави нищо без икони", () => {
+    const doc = createMindMapDoc();
+    const id = addChild(doc, ROOT_ID, "Без икони");
+    removeLastIcon(doc, id);
+    expect(getChildren(doc, ROOT_ID)[0].style.icons ?? []).toEqual([]);
   });
 
   it("мигрира старото вложено Y.Map поле (с единично style.icon) към хранилището", () => {

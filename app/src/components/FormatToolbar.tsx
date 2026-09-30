@@ -4,6 +4,7 @@ import type { NodeSnapshot } from "../model/doc";
 import {
   ROOT_ID,
   isSafeLinkUrl,
+  removeLastIcon,
   setBackgroundColor,
   setCloud,
   setLink,
@@ -232,6 +233,14 @@ export function FormatToolbar({
                 {icon.emoji}
               </button>
             ))}
+            <button
+              className="icon-picker-remove"
+              title={t.toolbarRemoveLastIcon}
+              disabled={!node.style.icons || node.style.icons.length === 0}
+              onClick={() => removeLastIcon(doc, node.id, origin)}
+            >
+              ⌫
+            </button>
           </div>
         )}
       </div>

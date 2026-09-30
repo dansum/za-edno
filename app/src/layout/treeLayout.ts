@@ -182,7 +182,12 @@ export function computeLayout(doc: Y.Doc, root: NodeSnapshot): LayoutResult {
   const leftChildren = allChildren.filter((c) => c.side === "left");
   const rightChildren = allChildren.filter((c) => c.side !== "left");
 
-  const rootWidth = estimateWidth(root.text || " ", root.style);
+  // Коренът винаги се изчертава получер чрез CSS (`.mindmap-node.root`),
+  // независимо от `style.bold` в модела - без `bold: true` тук ширината се
+  // мереше по-тънкия (обикновен) шрифт и излизаше няколко пиксела по-тясна
+  // от РЕАЛНО изчертания получер текст, затова коренът пренасяше на втори
+  // ред дори при съвсем нормална дължина на текста (§8.18).
+  const rootWidth = estimateWidth(root.text || " ", { ...root.style, bold: true });
   const rootHeight = estimateHeight(root.text || " ");
   const nodes: LayoutNode[] = [];
   const edges: { from: string; to: string }[] = [];

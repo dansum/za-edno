@@ -823,6 +823,15 @@ kbd {
   background: #e8f0fe;
 }
 
+.icon-picker-remove {
+  color: #b3392b;
+}
+
+.icon-picker-remove:disabled {
+  color: #cfcfc8;
+  cursor: default;
+}
+
 .node-icons {
   margin-right: 4px;
   white-space: nowrap;

@@ -32,3 +32,22 @@ describe("оформление при многоредов текст (§8.1)", 
     expect(box.width).toBeLessThan(wideBox.width);
   });
 });
+
+describe("ширината на корена отчита получерния му CSS стил (§8.18)", () => {
+  it("коренът е по-широк от обикновена клетка със СЪЩИЯ текст", () => {
+    // Коренът се изчертава получер чрез CSS (.mindmap-node.root), независимо
+    // от style.bold в модела - преди тази поправка ширината му се смяташе
+    // все едно е обикновен (по-тесен) шрифт и текстът пренасяше на нов ред
+    // дори при съвсем нормална дължина (напр. "Mindmap origin / начална
+    // клетка"), защото реално изчертаният получер текст не се побираше.
+    const text = "Еднакъв текст за сравнение";
+    const doc = createMindMapDoc();
+    setNodeText(doc, ROOT_ID, text);
+    const child = addChild(doc, ROOT_ID, text);
+
+    const layout = computeLayout(doc, getAllSnapshots(doc)[ROOT_ID]);
+    const rootBox = layout.nodes.find((n) => n.id === ROOT_ID)!;
+    const childBox = layout.nodes.find((n) => n.id === child)!;
+    expect(rootBox.width).toBeGreaterThan(childBox.width);
+  });
+});
