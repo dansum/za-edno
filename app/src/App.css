@@ -21,11 +21,13 @@ body {
   height: 100vh;
 }
 
+/* По-ниска и по-сбита лента (§8.20) - редките действия са в менютата. */
 .app-header {
   display: flex;
+  flex-wrap: wrap; /* иначе на средно широк екран дясната част излиза извън страницата */
   align-items: center;
-  gap: 16px;
-  padding: 10px 16px;
+  gap: 4px 12px;
+  padding: 5px 12px;
   background: #ffffff;
   border-bottom: 1px solid #e2e2e0;
 }
@@ -38,12 +40,15 @@ body {
 
 .app-header-actions {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 4px;
 }
 
 .admin-link-btn {
-  font-size: 13px;
-  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 3px 8px;
+  white-space: nowrap;
   border: 1px solid #d0d0cc;
   background: #fafafa;
   border-radius: 6px;
@@ -59,8 +64,10 @@ body {
 }
 
 .app-header-actions button {
-  font-size: 13px;
-  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 3px 8px;
+  white-space: nowrap;
   border: 1px solid #d0d0cc;
   background: #fafafa;
   border-radius: 6px;
@@ -69,6 +76,22 @@ body {
 
 .app-header-actions button:hover {
   background: #efefec;
+}
+
+.app-header-actions button[aria-expanded="true"] {
+  background: #e8edf3;
+  border-color: #b9c6d6;
+}
+
+/* Дарението се отличава, но тихо - не е действие с картата. */
+.admin-link-btn.donate-link {
+  border-color: #e3b8a8;
+  background: #fdf3ef;
+  color: #9a3412;
+}
+
+.admin-link-btn.donate-link:hover {
+  background: #fbe6dd;
 }
 
 .app-main {
@@ -429,18 +452,28 @@ body {
 }
 
 .file-menu-dropdown button {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
   text-align: left;
   border: none;
   background: transparent;
-  padding: 7px 10px;
+  padding: 5px 10px;
   border-radius: 6px;
-  font-size: 13px;
+  font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
 }
 
-.file-menu-dropdown button:hover {
-  background: #f0f0ec;
+.file-menu-dropdown button:hover,
+.file-menu-dropdown button:focus-visible {
+  background: #e8edf3;
+  outline: none;
+}
+
+.menu-shortcut {
+  color: #6b7280;
+  font-size: 11px;
 }
 
 .file-menu-dropdown hr {
@@ -461,7 +494,7 @@ body {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 17px;
+  font-size: 15px;
   margin: 0;
   flex: 0 0 auto;
 }
@@ -485,7 +518,7 @@ body {
 
 .language-select {
   font-size: 12px;
-  padding: 4px 6px;
+  padding: 2px 4px;
   border-radius: 6px;
   border: 1px solid #d0d0cc;
   background: #fafafa;
@@ -647,23 +680,24 @@ kbd {
 @media (max-width: 720px) {
   .app-header {
     flex-wrap: wrap;
-    gap: 8px 12px;
-    padding: 8px 10px;
+    gap: 6px 10px;
+    padding: 5px 10px;
   }
 
   .app-title {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   .app-tagline {
     display: none;
   }
 
+  /* пренасяне вместо хоризонтално превъртане: overflow би отрязал
+     падащите менюта (те излизат под реда) */
   .app-header-actions {
     order: 3;
     width: 100%;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    flex-wrap: wrap;
   }
 
   .app-header-right {

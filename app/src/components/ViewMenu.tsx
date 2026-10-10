@@ -1,16 +1,22 @@
-import { useState } from "react";
 import { ROOT_ID } from "../model/doc";
 import type { CanvasHandle } from "./MindMapCanvas";
 import { useT } from "../i18n/useLanguage";
 import { PAN_STEP_PX } from "../panStep";
+import { useDropdownMenu } from "../hooks/useDropdownMenu";
 
-export function ViewMenu({ canvasRef }: { canvasRef: React.MutableRefObject<CanvasHandle | null> }) {
+export function ViewMenu({
+  canvasRef,
+  onOutline,
+}: {
+  canvasRef: React.MutableRefObject<CanvasHandle | null>;
+  onOutline: () => void;
+}) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const { open, toggle, close, rootRef, triggerRef } = useDropdownMenu();
 
   function centerRoot() {
     canvasRef.current?.focusNode(ROOT_ID);
-    setOpen(false);
+    close();
   }
 
   // "Надясно" означава да се разкрие съдържание вдясно - самото платно се
@@ -18,14 +24,25 @@ export function ViewMenu({ canvasRef }: { canvasRef: React.MutableRefObject<Canv
   // в надписа на бутона (както при бутоните за преместване в картите).
   function pan(dx: number, dy: number) {
     canvasRef.current?.panBy(dx, dy);
-    setOpen(false);
+    close();
   }
 
   return (
-    <div className="file-menu">
-      <button onClick={() => setOpen((v) => !v)}>{t.viewMenu}</button>
+    <div className="file-menu" ref={rootRef}>
+      <button ref={triggerRef} onClick={toggle} aria-haspopup="true" aria-expanded={open}>
+        {t.viewMenu}
+      </button>
       {open && (
-        <div className="file-menu-dropdown">
+        <div className="file-menu-dropdown" data-menu-items>
+          <button
+            onClick={() => {
+              onOutline();
+              close();
+            }}
+          >
+            {t.outline}
+          </button>
+          <hr />
           <button onClick={centerRoot}>{t.viewCenterRoot}</button>
           <hr />
           <button onClick={() => pan(PAN_STEP_PX, 0)}>{t.viewPanLeft}</button>

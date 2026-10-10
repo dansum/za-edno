@@ -44,6 +44,20 @@ import { FormatToolbar } from "./FormatToolbar";
 import { useUndoRedoState } from "../hooks/useUndo";
 import { PAN_STEP_PX } from "../panStep";
 import { notify } from "../toast";
+import { promptForNodeLink } from "../linkPrompt";
+import {
+  MAP_CLIPBOARD_MIME,
+  MAX_PASTE_NODES,
+  countNodes,
+  insertPlainTrees,
+  parseIndentedText,
+  sanitizeTrees,
+  subtreesToPlain,
+  toHtmlList,
+  toIndentedText,
+  topLevelSelection,
+} from "../clipboard/mapClipboard";
+import type { PlainNode } from "../importExport/freemind";
 
 const LOCAL_ORIGIN = Symbol("local-edit");
 export { LOCAL_ORIGIN };
@@ -274,6 +288,12 @@ export function MindMapCanvas({
         toggleItalic(doc, selectedId, LOCAL_ORIGIN);
         return;
       }
+      // Ctrl+K - уеб линк в клетката (§8.20), като в Word и Google Docs.
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.code === "KeyK") {
+        e.preventDefault();
+        promptForNodeLink(doc, selectedId, nodes[selectedId]?.style.link, t, LOCAL_ORIGIN);
+        return;
+      }
       // Ctrl+Y (Windows/Linux) или Ctrl+Shift+Z (навсякъде) - и двете за повторение.
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.code === "KeyY") {
         e.preventDefault();
@@ -314,6 +334,9 @@ export function MindMapCanvas({
       if (editingId) return; // докато се редактира текст, стрелките и Enter пишат в полето
       const active = document.activeElement;
       if (active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA")) return;
+      // Enter/интервал върху бутон или линк в горната лента трябва да го
+      // натисне (напр. да отвори меню), не да добави/сгъне клетка (§8.20).
+      if ((e.key === "Enter" || e.key === " ") && active?.closest(".app-header")) return;
 
       if (e.key === "Enter") {
         e.preventDefault();
@@ -469,6 +492,7 @@ export function MindMapCanvas({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [
+    t,
     doc,
     selectedId,
     editingId,
@@ -484,6 +508,88 @@ export function MindMapCanvas({
     multiSelected,
     effectiveSelection,
   ]);
+
+  // ---- копиране, изрязване и поставяне на клетки (§8.20) ----
+  // Ползват се събитията copy/cut/paste, не Clipboard API: само в тях
+  // браузърът позволява собствен MIME тип (пълните данни на клетките) редом
+  // с обикновения текст и HTML за други програми.
+  useEffect(() => {
+    function isTypingElsewhere(): boolean {
+      if (editingId) return true;
+      const a = document.activeElement as HTMLElement | null;
+      if (a && (a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.isContentEditable)) return true;
+      // маркиран текст другаде на страницата (напр. в помощта) се копира нормално
+      const sel = window.getSelection();
+      return !!sel && !sel.isCollapsed && sel.toString().length > 0;
+    }
+
+    function writeSelection(e: ClipboardEvent): string[] | null {
+      if (!e.clipboardData || isTypingElsewhere()) return null;
+      const top = topLevelSelection(doc, effectiveSelection);
+      if (top.length === 0) return null;
+      const trees = subtreesToPlain(doc, top);
+      e.clipboardData.setData("text/plain", toIndentedText(trees));
+      e.clipboardData.setData("text/html", toHtmlList(trees));
+      e.clipboardData.setData(MAP_CLIPBOARD_MIME, JSON.stringify(trees));
+      e.preventDefault();
+      return top;
+    }
+
+    function onCopy(e: ClipboardEvent) {
+      writeSelection(e);
+    }
+
+    function onCut(e: ClipboardEvent) {
+      const top = writeSelection(e);
+      if (!top) return;
+      // коренът не може да се изтрие - при него изрязването е просто копиране
+      const removable = top.filter((id) => id !== ROOT_ID);
+      if (removable.length === 0) return;
+      const parent = nodes[removable[0]]?.parent ?? ROOT_ID;
+      doc.transact(() => {
+        for (const id of removable) deleteNodeSubtree(doc, id, LOCAL_ORIGIN);
+      }, LOCAL_ORIGIN);
+      setMultiSelected(new Set());
+      onSelect(parent);
+    }
+
+    function onPaste(e: ClipboardEvent) {
+      if (!e.clipboardData || isTypingElsewhere()) return;
+      let trees: PlainNode[] = [];
+      const json = e.clipboardData.getData(MAP_CLIPBOARD_MIME);
+      if (json) {
+        try {
+          trees = sanitizeTrees(JSON.parse(json));
+        } catch {
+          trees = [];
+        }
+      }
+      // текст отвън - всеки ред е клетка, отместването дава нивото
+      if (trees.length === 0) trees = parseIndentedText(e.clipboardData.getData("text/plain"));
+      if (trees.length === 0) return;
+      e.preventDefault();
+
+      const total = countNodes(trees);
+      if (total > MAX_PASTE_NODES) {
+        notify(t.pasteTooLarge(total));
+        return;
+      }
+      const target = nodes[selectedId] ? selectedId : ROOT_ID;
+      if (nodes[target]?.collapsed) toggleCollapsed(doc, target, LOCAL_ORIGIN);
+      const newIds = insertPlainTrees(doc, target, trees, LOCAL_ORIGIN);
+      setMultiSelected(newIds.length > 1 ? new Set(newIds) : new Set());
+      onSelect(newIds[0]);
+    }
+
+    document.addEventListener("copy", onCopy);
+    document.addEventListener("cut", onCut);
+    document.addEventListener("paste", onPaste);
+    return () => {
+      document.removeEventListener("copy", onCopy);
+      document.removeEventListener("cut", onCut);
+      document.removeEventListener("paste", onPaste);
+    };
+  }, [doc, nodes, selectedId, editingId, effectiveSelection, onSelect, t]);
 
   // ---- панорама и мащаб на платното ----
   function onWheel(e: React.WheelEvent) {

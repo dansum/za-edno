@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { useDropdownMenu } from "../hooks/useDropdownMenu";
 import * as Y from "yjs";
 import {
   docToTree,
@@ -22,9 +23,21 @@ function safeFileName(doc: Y.Doc): string {
   return title.replace(/[\\/:*?"<>|]/g, "-").slice(0, 60);
 }
 
-export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => void }) {
+export function FileMenu({
+  doc,
+  onImported,
+  onCopyLink,
+  onSearch,
+  onHistory,
+}: {
+  doc: Y.Doc;
+  onImported: () => void;
+  onCopyLink: () => void;
+  onSearch: () => void;
+  onHistory: () => void;
+}) {
   const t = useT();
-  const [open, setOpen] = useState(false);
+  const { open, toggle, close: closeMenu, rootRef, triggerRef } = useDropdownMenu();
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -38,7 +51,7 @@ export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => vo
       if (!ok) return;
       replaceDocWithTree(doc, tree);
       onImported();
-      setOpen(false);
+      closeMenu();
     } catch (err) {
       const message = err instanceof Error ? err.message : t.importFailed;
       setError(message);
@@ -52,7 +65,7 @@ export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => vo
     if (!ok) return;
     replaceDocWithTree(doc, template.tree);
     onImported();
-    setOpen(false);
+    closeMenu();
   }
 
   function saveCopyToNewRoom() {
@@ -64,18 +77,46 @@ export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => vo
       return;
     }
     window.open(`index.html?room=${newRoomId}`, "_blank");
-    setOpen(false);
+    closeMenu();
   }
 
   return (
-    <div className="file-menu">
-      <button onClick={() => setOpen((v) => !v)}>{t.file}</button>
+    <div className="file-menu" ref={rootRef}>
+      <button ref={triggerRef} onClick={toggle} aria-haspopup="true" aria-expanded={open}>
+        {t.file}
+      </button>
       {open && (
-        <div className="file-menu-dropdown">
+        <div className="file-menu-dropdown" data-menu-items>
+          <button
+            onClick={() => {
+              onCopyLink();
+              closeMenu();
+            }}
+          >
+            {t.copyLink}
+          </button>
+          <button
+            onClick={() => {
+              onSearch();
+              closeMenu();
+            }}
+          >
+            {t.search}
+            <span className="menu-shortcut">Ctrl+F</span>
+          </button>
+          <button
+            onClick={() => {
+              onHistory();
+              closeMenu();
+            }}
+          >
+            {t.history}
+          </button>
+          <hr />
           <button
             onClick={() => {
               downloadTextFile(`${safeFileName(doc)}.mm`, exportToFreeMind(doc), "application/xml");
-              setOpen(false);
+              closeMenu();
             }}
           >
             {t.exportFreeMind}
@@ -83,7 +124,7 @@ export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => vo
           <button
             onClick={() => {
               downloadTextFile(`${safeFileName(doc)}.md`, exportToMarkdown(doc), "text/markdown");
-              setOpen(false);
+              closeMenu();
             }}
           >
             {t.exportMarkdown}
@@ -91,7 +132,7 @@ export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => vo
           <button
             onClick={() => {
               downloadTextFile(`${safeFileName(doc)}.opml`, exportToOpml(doc), "text/x-opml");
-              setOpen(false);
+              closeMenu();
             }}
           >
             {t.exportOpml}
@@ -99,7 +140,7 @@ export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => vo
           <button
             onClick={() => {
               downloadBlob(`${safeFileName(doc)}.svg`, new Blob([exportToSvg(doc)], { type: "image/svg+xml" }));
-              setOpen(false);
+              closeMenu();
             }}
           >
             {t.exportSvg}
@@ -108,7 +149,7 @@ export function FileMenu({ doc, onImported }: { doc: Y.Doc; onImported: () => vo
             onClick={async () => {
               try {
                 downloadBlob(`${safeFileName(doc)}.png`, await exportToPngBlob(doc));
-                setOpen(false);
+                closeMenu();
               } catch {
                 notify(t.exportFailed);
               }

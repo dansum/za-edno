@@ -14,6 +14,7 @@ import { SearchBar, EMPTY_SEARCH, type SearchState } from "./components/SearchBa
 import { LanguageProvider, useLanguage } from "./i18n/useLanguage";
 import { LANGUAGES } from "./i18n/translations";
 import { generateRoomId } from "./roomId";
+import { notify } from "./toast";
 import "./App.css";
 
 function getRoomIdFromUrl(): string {
@@ -46,7 +47,6 @@ function AppShell() {
   const nodeCount = Object.keys(nodes).length;
   const [searchOpen, setSearchOpen] = useState(false);
   const [search, setSearch] = useState<SearchState>(EMPTY_SEARCH);
-  const [linkCopied, setLinkCopied] = useState(false);
   const undoManager = useUndoManager(doc, LOCAL_ORIGIN);
   if (import.meta.env.DEV) {
     // помощ при диагностика в конзолата на браузъра (вж. hooks/useYDoc.ts за __mindmap)
@@ -75,13 +75,16 @@ function AppShell() {
   }
 
   function copyLink() {
+    // Менюто се затваря веднага след избора, затова потвърждението е известие
+    // (а не смяна на надписа на бутон, както беше, докато бутонът стоеше в лентата).
+    if (!navigator.clipboard) {
+      notify(t.copyLinkFailed);
+      return;
+    }
     navigator.clipboard
-      ?.writeText(window.location.href)
-      .then(() => {
-        setLinkCopied(true);
-        setTimeout(() => setLinkCopied(false), 2000);
-      })
-      .catch(() => {});
+      .writeText(window.location.href)
+      .then(() => notify(t.copyLinkDone, "info"))
+      .catch(() => notify(t.copyLinkFailed));
   }
 
   return (
@@ -93,17 +96,20 @@ function AppShell() {
         </h1>
 
         <div className="app-header-actions">
-          <button onClick={copyLink} title={window.location.href}>
-            {linkCopied ? t.copyLinkDone : t.copyLink}
-          </button>
-          <button onClick={openSearch}>{t.search}</button>
-          <button onClick={() => setHistoryOpen(true)}>{t.history}</button>
-          <button onClick={() => setOutlineOpen(true)}>{t.outline}</button>
-          <FileMenu doc={doc} onImported={() => setSelectedId(ROOT_ID)} />
-          <ViewMenu canvasRef={canvasRef} />
+          <FileMenu
+            doc={doc}
+            onImported={() => setSelectedId(ROOT_ID)}
+            onCopyLink={copyLink}
+            onSearch={openSearch}
+            onHistory={() => setHistoryOpen(true)}
+          />
+          <ViewMenu canvasRef={canvasRef} onOutline={() => setOutlineOpen(true)} />
           <button onClick={() => setHelpOpen(true)}>{t.help}</button>
           <a className="admin-link-btn" href="admin.html">
             {t.adminTitle}
+          </a>
+          <a className="admin-link-btn donate-link" href={t.donateUrl} target="_blank" rel="noopener noreferrer">
+            {t.donate}
           </a>
         </div>
 

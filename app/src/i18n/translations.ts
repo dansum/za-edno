@@ -15,9 +15,13 @@ const bg = {
   // лента с действия
   copyLink: "Копирай линк за споделяне",
   copyLinkDone: "Линкът е копиран",
+  copyLinkFailed: "Линкът не се копира — копирайте го от адресната лента на браузъра",
   history: "История",
-  outline: "Очертание",
-  outlineTitle: "Очертание на картата",
+  outline: "Преглед като текст",
+  outlineTitle: "Преглед като текст",
+  donate: "Дари за ОбР",
+  donateUrl: "https://obr.education/stani-daritel/",
+  pasteTooLarge: (n: number) => `Поставянето е отказано: ${n} клетки наведнъж са твърде много (до 2000)`,
   nodeCountWarning: (n: number) =>
     `Голяма карта: ${n} клетки. Много големите карти може да натоварят браузъра.`,
   file: "Файл",
@@ -55,7 +59,7 @@ const bg = {
 
   // клавиши
   shortcutsHint:
-    "Enter — нов брат · Tab/Insert — ново дете · F2 — редакция · Delete — изтрий · Space — сгъни/разгъни · Ctrl+посока — мести възела · Alt+Enter — нов ред · Ctrl+Z/Ctrl+Y — отмени/повтори · Ctrl+B/Ctrl+I — удебелено/наклонено · Alt+R — червен текст",
+    "Enter — нов брат · Tab/Insert — ново дете · F2 — редакция · Delete — изтрий · Space — сгъни/разгъни · Ctrl+посока — мести възела · Alt+Enter — нов ред · Ctrl+Z/Ctrl+Y — отмени/повтори · Ctrl+B/Ctrl+I — удебелено/наклонено · Ctrl+K — линк · Ctrl+C/X/V — копирай/изрежи/постави · Alt+R — червен текст",
 
   // търсене
   searchPlaceholder: "Търсене във възлите…",
@@ -127,6 +131,10 @@ const bg = {
   keyIcon: "добавя/маха иконата",
   keyMoveNode: "мести възела в дървото (ред при нагоре/надолу, ниво при ляво/дясно)",
   keyNewline: "нов ред вътре в клетката",
+  keyLink: "уеб линк в клетката",
+  keyCopy: "копира избраните клетки с подчинените им",
+  keyCut: "изрязва избраните клетки с подчинените им",
+  keyPaste: "поставя като подчинени на избраната клетка",
 
   // лента за форматиране
   toolbarBold: "Удебелено (Ctrl+B)",
@@ -190,9 +198,13 @@ const en: Dictionary = {
 
   copyLink: "Copy sharing link",
   copyLinkDone: "Link copied",
+  copyLinkFailed: "Could not copy the link — copy it from the browser's address bar",
   history: "History",
-  outline: "Outline",
-  outlineTitle: "Map outline",
+  outline: "View as text",
+  outlineTitle: "View as text",
+  donate: "Donate to ObR",
+  donateUrl: "https://obr.education/en/donate/",
+  pasteTooLarge: (n: number) => `Paste refused: ${n} cells at once is too many (limit 2000)`,
   nodeCountWarning: (n: number) => `Large map: ${n} cells. Very large maps may slow down the browser.`,
   file: "File",
   viewMenu: "View",
@@ -226,7 +238,7 @@ const en: Dictionary = {
   newMapTitle: "New map",
 
   shortcutsHint:
-    "Enter — new sibling · Tab/Insert — new child · F2 — edit · Delete — remove · Space — collapse/expand · Ctrl+arrow — move node · Alt+Enter — new line · Ctrl+Z/Ctrl+Y — undo/redo · Ctrl+B/Ctrl+I — bold/italic · Alt+R — red text",
+    "Enter — new sibling · Tab/Insert — new child · F2 — edit · Delete — remove · Space — collapse/expand · Ctrl+arrow — move node · Alt+Enter — new line · Ctrl+Z/Ctrl+Y — undo/redo · Ctrl+B/Ctrl+I — bold/italic · Ctrl+K — link · Ctrl+C/X/V — copy/cut/paste · Alt+R — red text",
 
   searchPlaceholder: "Search nodes…",
   searchNoResults: "No matches",
@@ -293,6 +305,10 @@ const en: Dictionary = {
   keyIcon: "add/remove the icon",
   keyMoveNode: "move the node in the tree (reorder on up/down, level on left/right)",
   keyNewline: "insert a new line inside the cell",
+  keyLink: "web link in the cell",
+  keyCopy: "copy the selected cells with their sub-cells",
+  keyCut: "cut the selected cells with their sub-cells",
+  keyPaste: "paste as children of the selected cell",
 
   toolbarBold: "Bold (Ctrl+B)",
   toolbarItalic: "Italic (Ctrl+I)",

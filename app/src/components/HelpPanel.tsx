@@ -17,6 +17,10 @@ const KEYS: { keys: string; labelKey: keyof ReturnType<typeof useT> }[] = [
   { keys: "Ctrl + колело / Ctrl + wheel", labelKey: "keyZoom" },
   { keys: "Ctrl + B", labelKey: "keyBold" },
   { keys: "Ctrl + I", labelKey: "keyItalic" },
+  { keys: "Ctrl + K", labelKey: "keyLink" },
+  { keys: "Ctrl + C", labelKey: "keyCopy" },
+  { keys: "Ctrl + X", labelKey: "keyCut" },
+  { keys: "Ctrl + V", labelKey: "keyPaste" },
   { keys: "Alt + R (Ctrl+Shift+R на Mac)", labelKey: "keyRedText" },
 ];
 
